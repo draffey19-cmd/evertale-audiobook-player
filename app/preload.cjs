@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('hearth',{
   aiBrowse:kind=>ipcRenderer.invoke('ai-browse',kind),
   onAiModelStatus:fn=>ipcRenderer.on('ai-model-status',(_event,data)=>fn(data)),
   aiStart:(id,track,options)=>ipcRenderer.invoke('ai-transcript-start',id,track,options),
+  aiPosition:(id,track,time,playing)=>ipcRenderer.invoke('ai-transcript-position',id,track,time,playing),
   aiCancel:()=>ipcRenderer.invoke('ai-transcript-cancel'),
   aiStatus:()=>ipcRenderer.invoke('ai-transcript-status'),
   aiGet:(id,track)=>ipcRenderer.invoke('ai-transcript-get',id,track),
