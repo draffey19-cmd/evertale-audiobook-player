@@ -128,6 +128,23 @@ updatePlay();
 })();
 
 let aiSearchTimer=null;
+let aiAutoBusy=false;
+async function syncAiListening(){
+ if(!$('ai-auto').checked||!active)return;
+ const id=active.id,track=trackIndex,time=audio.currentTime||0;
+ try{
+  const status=await window.hearth.aiStatus();
+  if(status.state==='running'||status.state==='cancelling'){await window.hearth.aiPosition(id,track,time,!audio.paused);return;}
+  if(aiAutoBusy||audio.paused)return;
+  aiAutoBusy=true;
+  const options={binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim(),gpu:false,time};
+  await window.hearth.aiStart(id,track,options);
+ }catch(e){$('ai-status').textContent='Auto transcription: '+e.message;}
+ finally{aiAutoBusy=false;}
+}
+setInterval(()=>{if(active&&$('ai-auto').checked)syncAiListening();},5000);
+$('ai-auto').addEventListener('change',()=>{if($('ai-auto').checked)syncAiListening();else window.hearth.aiCancel();});
+
 async function showAiResults(){
  const b=selected;if(!b)return;const q=$('ai-search').value.trim();$('ai-results').replaceChildren();if(!q)return;
  try{const hits=await window.hearth.aiSearch(b.id,q);if(selected?.id!==b.id)return;
@@ -138,11 +155,11 @@ async function showAiResults(){
 $('ai-search').addEventListener('input',()=>{clearTimeout(aiSearchTimer);aiSearchTimer=setTimeout(showAiResults,250)});
 $('ai-start').onclick=async()=>{
  if(!selected)return;const id=selected.id,track=active?.id===id?trackIndex:selected.progress.track||0;
- const options={binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim(),gpu:$('ai-gpu').checked};
+ const options={binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim(),gpu:$('ai-gpu').checked,time:active?.id===id?audio.currentTime:(selected.progress.time||0)};
  try{renderAi(await window.hearth.aiStart(id,track,options));}catch(e){$('ai-status').textContent=e.message;}
 };
 $('ai-cancel').onclick=()=>window.hearth.aiCancel();
-function renderAi(s){if(!s)return;$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.state==='completed')showAiResults();}
+function renderAi(s){if(!s)return;$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.sectionSaved||s.state==='completed')showAiResults();}
 window.hearth.onAiStatus(renderAi);window.hearth.aiStatus().then(renderAi).catch(console.error);
 
 $('ai-browse-binary').onclick=async()=>{const p=await window.hearth.aiBrowse('binary');if(p)$('ai-binary').value=p;};
