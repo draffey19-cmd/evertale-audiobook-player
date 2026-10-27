@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron');
 const { initializeUpdater } = require('./updater.cjs');
+const { createTranscription } = require('./ai-transcription.cjs');
 const devMode = process.argv.includes('--hearth-dev');
 // Keep the existing Hearth data folder when rebranding, preserving library and progress.
 app.setName('Hearth Audiobooks');
@@ -135,6 +136,7 @@ app.whenReady().then(async()=>{
   await loadCache();
   createWindow();
   initializeUpdater({app,ipcMain,getWindow:()=>win,enabled:!devMode});
+  createTranscription({app,ipcMain,getWindow:()=>win,getBooks:()=>books,getTrackPath:key=>tracks.get(key)});
   scan().then(()=>win?.webContents.send('library-changed')).catch(console.error);
   setInterval(()=>{if(store.settings.autoScan!==false)scan().then(()=>win?.webContents.send('library-changed')).catch(console.error);},300000);
 });
