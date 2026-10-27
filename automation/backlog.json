@@ -1,90 +1,93 @@
-[
-    {
-        "id":  "READER",
-        "priority":  10,
-        "status":  "completed",
-        "safe":  true,
-        "instruction":  "Implement saved follow-along reader",
-        "allowedPaths":  [
-                             "app/*",
-                             "OVERNIGHT_REPORT.md"
-                         ],
-        "build":  true
-    },
-    {
-        "id":  "BOOK-QUEUE",
-        "priority":  20,
-        "status":  "completed",
-        "safe":  true,
-        "instruction":  "Implement persistent whole-book queue",
-        "allowedPaths":  [
-                             "app/*",
-                             "OVERNIGHT_REPORT.md"
-                         ],
-        "build":  true
-    },
-    {
-        "id":  "MODEL-GUIDE",
-        "priority":  30,
-        "status":  "completed",
-        "safe":  true,
-        "instruction":  "Investigate local CPU/Vulkan model choices",
-        "allowedPaths":  [
-                             "app/*",
-                             "MODEL_GUIDE.md",
-                             "OVERNIGHT_REPORT.md"
-                         ],
-        "build":  true
-    },
-    {
-        "id":  "SAFE-01",
-        "priority":  40,
-        "status":  "completed",
-        "safe":  true,
-        "instruction":  "Extend follow-along reader regressions for reverse seeks, repeated timestamps and out-of-order refresh errors; repair only failures discovered. Use fake/synthetic data. Document results.",
-        "allowedPaths":  [
-                             "app/transcript-reader.js",
-                             "app/test/transcript-reader.test.cjs",
-                             "OVERNIGHT_REPORT.md"
-                         ],
-        "build":  false
-    },
-    {
-        "id":  "SAFE-02",
-        "priority":  50,
-        "status":  "completed",
-        "safe":  true,
-        "instruction":  "Test whole-book recovery when a transcript saves before its queue checkpoint, and when a saved track disappears. Add focused regression tests and repair only discovered recovery failures. Do not open actual userData.",
-        "allowedPaths":  [
-                             "app/book-transcription.cjs",
-                             "app/test/book-transcription.test.cjs",
-                             "OVERNIGHT_REPORT.md"
-                         ],
-        "build":  false
-    },
-    {
-        "id":  "SAFE-03",
-        "priority":  60,
-        "status":  "pending",
-        "safe":  true,
-        "instruction":  "Review reader keyboard accessibility and reduced-motion handling. Add reduced-motion support for follow scrolling with focused tests if needed. Preserve clickable text and playback behavior.",
-        "allowedPaths":  [
-                             "app/transcript-reader.js",
-                             "app/styles.css",
-                             "app/test/transcript-reader.test.cjs",
-                             "OVERNIGHT_REPORT.md"
-                         ],
-        "build":  true
-    },
-    {
-        "id":  "MANUAL-ACCEPTANCE",
-        "priority":  70,
-        "status":  "blocked",
-        "safe":  false,
-        "instruction":  "User must validate real audiobook listening, long-session performance, installer acceptance and any additional model downloads. Stop for manual review.",
-        "allowedPaths":  [
+{
+    "value":  [
+                  {
+                      "id":  "READER",
+                      "priority":  10,
+                      "status":  "completed",
+                      "safe":  true,
+                      "instruction":  "Implement saved follow-along reader",
+                      "allowedPaths":  [
+                                           "app/*",
+                                           "OVERNIGHT_REPORT.md"
+                                       ],
+                      "build":  true
+                  },
+                  {
+                      "id":  "BOOK-QUEUE",
+                      "priority":  20,
+                      "status":  "completed",
+                      "safe":  true,
+                      "instruction":  "Implement persistent whole-book queue",
+                      "allowedPaths":  [
+                                           "app/*",
+                                           "OVERNIGHT_REPORT.md"
+                                       ],
+                      "build":  true
+                  },
+                  {
+                      "id":  "MODEL-GUIDE",
+                      "priority":  30,
+                      "status":  "completed",
+                      "safe":  true,
+                      "instruction":  "Investigate local CPU/Vulkan model choices",
+                      "allowedPaths":  [
+                                           "app/*",
+                                           "MODEL_GUIDE.md",
+                                           "OVERNIGHT_REPORT.md"
+                                       ],
+                      "build":  true
+                  },
+                  {
+                      "id":  "SAFE-01",
+                      "priority":  40,
+                      "status":  "completed",
+                      "safe":  true,
+                      "instruction":  "Extend follow-along reader regressions for reverse seeks, repeated timestamps and out-of-order refresh errors; repair only failures discovered. Use fake/synthetic data. Document results.",
+                      "allowedPaths":  [
+                                           "app/transcript-reader.js",
+                                           "app/test/transcript-reader.test.cjs",
+                                           "OVERNIGHT_REPORT.md"
+                                       ],
+                      "build":  false
+                  },
+                  {
+                      "id":  "SAFE-02",
+                      "priority":  50,
+                      "status":  "completed",
+                      "safe":  true,
+                      "instruction":  "Test whole-book recovery when a transcript saves before its queue checkpoint, and when a saved track disappears. Add focused regression tests and repair only discovered recovery failures. Do not open actual userData.",
+                      "allowedPaths":  [
+                                           "app/book-transcription.cjs",
+                                           "app/test/book-transcription.test.cjs",
+                                           "OVERNIGHT_REPORT.md"
+                                       ],
+                      "build":  false
+                  },
+                  {
+                      "id":  "SAFE-03",
+                      "priority":  60,
+                      "status":  "completed",
+                      "safe":  true,
+                      "instruction":  "Review reader keyboard accessibility and reduced-motion handling. Add reduced-motion support for follow scrolling with focused tests if needed. Preserve clickable text and playback behavior.",
+                      "allowedPaths":  [
+                                           "app/transcript-reader.js",
+                                           "app/styles.css",
+                                           "app/test/transcript-reader.test.cjs",
+                                           "OVERNIGHT_REPORT.md"
+                                       ],
+                      "build":  true
+                  },
+                  {
+                      "id":  "MANUAL-ACCEPTANCE",
+                      "priority":  70,
+                      "status":  "blocked",
+                      "safe":  false,
+                      "instruction":  "User must validate real audiobook listening, long-session performance, installer acceptance and any additional model downloads. Stop for manual review.",
+                      "allowedPaths":  [
 
-                         ],
-        "build":  false
-    }
-]
+                                       ],
+                      "build":  false
+                  }
+              ],
+    "Count":  7
+}
