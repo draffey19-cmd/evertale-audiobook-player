@@ -2,45 +2,16 @@ const {spawn}=require('node:child_process');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
-const https=require('node:https');
 const bundledFfmpeg=require('ffmpeg-static');
 const bundledFfmpegPath=appPath=>appPath&&appPath.includes('app.asar')?appPath.replace('app.asar','app.asar.unpacked'):appPath;
 function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  const base=path.join(app.getPath('userData'),'ai-transcripts');
  let job=null;
- let modelDownload=null;
- const modelDirectory=path.join(app.getPath('userData'),'ai-models');
- const modelPath=path.join(modelDirectory,'ggml-base.en.bin');
- const bundledWhisper=path.join(process.resourcesPath,'ai-bin','whisper-cli.exe');
- const gpuWhisper=path.join(process.resourcesPath,'ai-gpu','whisper-cli.exe');
- ipcMain.handle('ai-engine-status',async()=>({installed:await fs.access(bundledWhisper).then(()=>true).catch(()=>false),path:bundledWhisper,gpuInstalled:await fs.access(gpuWhisper).then(()=>true).catch(()=>false),gpuPath:gpuWhisper}));
- const modelURL='https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin';
- const downloadStatus=s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-model-status',s);};
- ipcMain.handle('ai-model-path',async()=>({path:modelPath,installed:await fs.stat(modelPath).then(s=>s.size>10000000).catch(()=>false)}));
- ipcMain.handle('ai-model-download',async()=>{
-  if(modelDownload)throw Error('Model download already running');
-  await fs.mkdir(modelDirectory,{recursive:true});
-  const temp=modelPath+'.partial';let stopped=false;let request=null;
-  const status={state:'downloading',percent:0,message:'Downloading Whisper base.en model…'};downloadStatus(status);
-  const promise=new Promise((resolve,reject)=>{
-   const get=(url,redirects=0)=>{if(redirects>5)return reject(Error('Too many redirects'));if(!/^https:\/\//.test(url))return reject(Error('Insecure download redirect'));
-    request=https.get(url,response=>{
-     if([301,302,303,307,308].includes(response.statusCode)){const next=new URL(response.headers.location,url);response.resume();return get(next.href,redirects+1);}
-     if(response.statusCode!==200){response.resume();return reject(Error('Model download failed: HTTP '+response.statusCode));}
-     const total=Number(response.headers['content-length'])||0;let bytes=0;
-     const stream=require('node:fs').createWriteStream(temp);
-     response.on('data',chunk=>{bytes+=chunk.length;if(total){status.percent=Math.min(99,Math.round(bytes/total*100));downloadStatus({...status});}});
-     response.on('error',reject);stream.on('error',reject);stream.on('finish',()=>resolve(bytes));response.pipe(stream);
-    });request.on('error',reject);
-   };get(modelURL);
-  });
-  modelDownload={cancel:()=>{stopped=true;request?.destroy(Error('Download cancelled'));}};
-  try{const size=await promise;if(size<10000000)throw Error('Downloaded model is unexpectedly small');await fs.rename(temp,modelPath);downloadStatus({state:'ready',percent:100,message:'Whisper model downloaded'});return {path:modelPath,installed:true};}
-  catch(e){await fs.rm(temp,{force:true}).catch(()=>{});downloadStatus({state:stopped?'cancelled':'error',message:e.message});throw e;}
-  finally{modelDownload=null;}
+ const endpoint='http://127.0.0.1:3030';
+ ipcMain.handle('ai-engine-status',async()=>{
+  try{const response=await fetch(endpoint+'/v1/models',{signal:AbortSignal.timeout(2500)});if(!response.ok)throw Error('HTTP '+response.status);const data=await response.json();return {installed:true,ready:!!data.data?.length,engine:'Vibe local server'};}
+  catch{return {installed:false,ready:false,engine:'Vibe local server'};}
  });
- ipcMain.handle('ai-model-cancel',()=>{if(!modelDownload)return false;modelDownload.cancel();return true;});
-
  const CHUNK=90;
  const emit=s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-transcription-status',s);};
  const key=(id,track)=>crypto.createHash('sha256').update(id+':'+track).digest('hex').slice(0,32);
@@ -53,17 +24,14 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  let auto=null;
  const status=()=>job?.status||{state:'idle'};
  ipcMain.handle('ai-transcript-status',status);
- function stop(){if(job){job.cancelled=true;job.child?.kill();}job=null;}
+ function stop(){if(job){job.cancelled=true;job.child?.kill();job.controller?.abort();job.controller?.abort();job.controller?.abort();}job=null;}
  ipcMain.handle('ai-transcript-cancel',()=>{auto=null;stop();emit({state:'cancelled',message:'Transcription stopped'});return true;});
- const optionsFor=async(options={})=>{
-  const cpuBinary=bundledWhisper;
-  const gpuAvailable=await fs.access(gpuWhisper).then(()=>true).catch(()=>false);
-  const customBinary=String(options.binary||'').trim();
-  const binary=customBinary||(options.gpu!==false&&gpuAvailable?gpuWhisper:cpuBinary);
-  const model=String(options.model||modelPath).trim();
-  const ffmpeg=String(options.ffmpeg||bundledFfmpegPath(bundledFfmpeg)||'ffmpeg').trim();
-  for(const p of [binary,model]){if(!path.isAbsolute(p))throw Error('Select a valid local Whisper executable and model');await fs.access(p);}
-  return {binary,model,ffmpeg,gpu:options.gpu!==false,cpuBinary,canFallback:binary!==cpuBinary};
+ const optionsFor=async()=> {
+  const response=await fetch(endpoint+'/v1/models',{signal:AbortSignal.timeout(3000)}).catch(()=>null);
+  if(!response?.ok)throw Error('Vibe server is not running at 127.0.0.1:3030. Start vibe-server serve --port 3030.');
+  const data=await response.json();
+  if(!data.data?.length)throw Error('Vibe server is running, but no speech model is loaded. Load a model in Vibe first.');
+  return {ffmpeg:bundledFfmpegPath(bundledFfmpeg)||'ffmpeg'};
  };
  function processChild(task,command,args){
   return new Promise((resolve,reject)=>{
@@ -97,7 +65,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
     await save(id,track,previous);
    }
    task.status={state:'completed',id,track,chunk,percent:100,message:'Saved transcript section at '+Math.floor(start/60)+'m',segments:segments.length};emit(task.status);
-  }finally{await Promise.all([fs.rm(wav,{force:true}),fs.rm(output+'.json',{force:true})]).catch(()=>{});}
+  }finally{await Promise.all([fs.rm(wav,{force:true}),Promise.resolve()]).catch(()=>{});}
  }
  async function runChunk(id,track,chunk,opts){
   if(job)return false;
