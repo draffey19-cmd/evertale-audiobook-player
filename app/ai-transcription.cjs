@@ -8,9 +8,54 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  const base=path.join(app.getPath('userData'),'ai-transcripts');
  let job=null;
  const endpoint='http://127.0.0.1:3030';
+ const configPath=path.join(app.getPath('userData'),'vibe-config.json');
+ let server=null;
+ let starting=null;
+ const config=async()=>{try{return JSON.parse(await fs.readFile(configPath,'utf8'));}catch{return {};}};
+ const probe=async()=>{try{const r=await fetch(endpoint+'/v1/models',{signal:AbortSignal.timeout(1500)});return r.ok?await r.json():null;}catch{return null;}};
+ async function ensureServer(){
+  const current=await probe();if(current)return current;
+  if(starting)return starting;
+  starting=(async()=>{
+   const {binary}=await config();
+   if(!binary)throw Error('Choose the vibe-server.exe file in EverTale first.');
+   await fs.access(binary);
+   server=spawn(binary,['serve','--port','3030'],{windowsHide:true,stdio:'ignore'});
+   server.on('error',e=>{console.error('Vibe server failed:',e);server=null;});
+   server.on('exit',()=>{server=null;});
+   for(let i=0;i<40;i++){
+    await new Promise(resolve=>setTimeout(resolve,250));
+    const state=await probe();if(state)return state;
+    if(!server)break;
+   }
+   throw Error('Vibe server did not start. Check the selected vibe-server.exe.');
+  })();
+  try{return await starting;}finally{starting=null;}
+ }
+ async function ensureModel(){
+  const state=await ensureServer();
+  if(state.data?.length)return state;
+  const {model}=await config();
+  if(!model)throw Error('Choose a downloaded speech model in EverTale first.');
+  await fs.access(model);
+  const response=await fetch(endpoint+'/v1/models/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:model,gpu_device:-1,no_gpu:false}),signal:AbortSignal.timeout(120000)});
+  if(!response.ok)throw Error('Vibe model loading failed: '+(await response.text()).slice(0,400));
+  return await probe();
+ }
+ ipcMain.handle('ai-vibe-config',async(_,changes)=>{
+  if(changes){
+   const old=await config(),next={...old};
+   for(const field of ['binary','model'])if(typeof changes[field]==='string')next[field]=changes[field];
+   await fs.writeFile(configPath,JSON.stringify(next,null,2));
+  }
+  return config();
+ });
+ ipcMain.handle('ai-vibe-ready',async()=>{await ensureModel();return {ready:true};});
+ app.on('before-quit',()=>{if(server){server.kill();server=null;}});
+
  ipcMain.handle('ai-engine-status',async()=>{
-  try{const response=await fetch(endpoint+'/v1/models',{signal:AbortSignal.timeout(2500)});if(!response.ok)throw Error('HTTP '+response.status);const data=await response.json();return {installed:true,ready:!!data.data?.length,engine:'Vibe local server'};}
-  catch{return {installed:false,ready:false,engine:'Vibe local server'};}
+  const data=await probe();const settings=await config();
+  return {installed:!!data,ready:!!data?.data?.length,configured:!!settings.binary&&!!settings.model,engine:'Vibe local server'};
  });
  const CHUNK=90;
  const emit=s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-transcription-status',s);};
@@ -27,10 +72,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  function stop(){if(job){job.cancelled=true;job.child?.kill();job.controller?.abort();}job=null;}
  ipcMain.handle('ai-transcript-cancel',()=>{auto=null;stop();emit({state:'cancelled',message:'Transcription stopped'});return true;});
  const optionsFor=async()=> {
-  const response=await fetch(endpoint+'/v1/models',{signal:AbortSignal.timeout(3000)}).catch(()=>null);
-  if(!response?.ok)throw Error('Vibe server is not running at 127.0.0.1:3030. Start vibe-server serve --port 3030.');
-  const data=await response.json();
-  if(!data.data?.length)throw Error('Vibe server is running, but no speech model is loaded. Load a model in Vibe first.');
+  await ensureModel();
   return {ffmpeg:bundledFfmpegPath(bundledFfmpeg)||'ffmpeg'};
  };
  function processChild(task,command,args){
@@ -68,7 +110,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
     await save(id,track,previous);
    }
    task.status={state:'completed',id,track,chunk,percent:100,message:'Saved transcript section at '+Math.floor(start/60)+'m',segments:segments.length};emit(task.status);
-  }finally{await Promise.all([fs.rm(wav,{force:true}),Promise.resolve()]).catch(()=>{});}
+  }finally{await fs.rm(wav,{force:true}).catch(()=>{});}
  }
  async function runChunk(id,track,chunk,opts){
   if(job)return false;
@@ -109,7 +151,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  ipcMain.handle('ai-auto-start',async(_,id,track,position,options={})=>{
   resolve(id,track);const opts=await optionsFor(options);
   auto={id,track,position:Math.max(0,Number(position)||0),opts};
-  if(job){job.cancelled=true;job.child?.kill();}else setImmediate(pump);
+  if(job){job.cancelled=true;job.child?.kill();job.controller?.abort();}else setImmediate(pump);
   return {state:'running',message:'Automatic background transcription enabled'};
  });
  ipcMain.handle('ai-auto-position',(_,id,track,position)=>{
@@ -117,7 +159,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
   resolve(id,track);
   const changed=auto.track!==track||Math.abs(auto.position-(Number(position)||0))>=CHUNK*2;
   auto.track=track;auto.position=Math.max(0,Number(position)||0);
-  if(changed&&job&&(job.status.track!==track||Math.abs((job.status.chunk||0)*CHUNK-auto.position)>=CHUNK*3)){job.cancelled=true;job.child?.kill();}
+  if(changed&&job&&(job.status.track!==track||Math.abs((job.status.chunk||0)*CHUNK-auto.position)>=CHUNK*3)){job.cancelled=true;job.child?.kill();job.controller?.abort();}
   if(!job)setImmediate(pump);
   return true;
  });
