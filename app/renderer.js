@@ -158,7 +158,24 @@ $('ai-start').onclick=async()=>{
  const options={binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim(),gpu:$('ai-gpu').checked,time:active?.id===id?audio.currentTime:(selected.progress.time||0)};
  try{renderAi(await window.hearth.aiStart(id,track,options));}catch(e){$('ai-status').textContent=e.message;}
 };
-$('ai-cancel').onclick=()=>window.hearth.aiCancel();
+$('ai-cancel').onclick=async()=>{await window.hearth.aiCancel();$('ai-auto').checked=false;};
+let aiPositionSent=0;
+function aiOptions(){return {binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim(),gpu:$('ai-gpu').checked};}
+async function syncAiPosition(force=false){
+ if(!$('ai-auto').checked||!active||audio.paused)return;
+ if(!force&&Date.now()-aiPositionSent<5000)return;
+ aiPositionSent=Date.now();
+ try{const ok=await window.hearth.aiAutoPosition(active.id,trackIndex,audio.currentTime);if(!ok)await window.hearth.aiAutoStart(active.id,trackIndex,audio.currentTime,aiOptions());}
+ catch(e){$('ai-status').textContent=e.message;$('ai-auto').checked=false;}
+}
+$('ai-auto').addEventListener('change',async()=>{
+ if(!$('ai-auto').checked){await window.hearth.aiCancel();return;}
+ if(!active){$('ai-status').textContent='Play an audiobook to start automatic transcription.';return;}
+ try{await window.hearth.aiAutoStart(active.id,trackIndex,audio.currentTime,aiOptions());}catch(e){$('ai-status').textContent=e.message;$('ai-auto').checked=false;}
+});
+audio.addEventListener('timeupdate',()=>syncAiPosition());
+audio.addEventListener('seeked',()=>syncAiPosition(true));
+audio.addEventListener('play',()=>syncAiPosition(true));
 function renderAi(s){if(!s)return;$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.sectionSaved||s.state==='completed')showAiResults();}
 window.hearth.onAiStatus(renderAi);window.hearth.aiStatus().then(renderAi).catch(console.error);
 
