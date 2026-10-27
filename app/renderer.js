@@ -151,3 +151,5 @@ window.hearth.aiModelPath().then(s=>{if(s.installed){$('ai-model').value=s.path;
 $('ai-download-model').onclick=async()=>{try{const s=await window.hearth.aiModelDownload();$('ai-model').value=s.path;}catch(e){$('ai-model-status').textContent=e.message;}};
 $('ai-cancel-model').onclick=()=>window.hearth.aiModelCancel();
 window.hearth.onAiModelStatus(s=>{$('ai-model-status').textContent=s.message+(s.percent?' ('+s.percent+'%)':'');$('ai-download-model').disabled=s.state==='downloading';$('ai-cancel-model').hidden=s.state!=='downloading';});
+
+window.hearth.aiEngineStatus().then(s=>{$('ai-engine-status').textContent=s.installed?'Whisper engine ready (included with EverTale)':'Whisper engine not included in this build';}).catch(e=>{$('ai-engine-status').textContent=e.message;});
