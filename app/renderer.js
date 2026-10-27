@@ -186,4 +186,4 @@ $('ai-download-model').onclick=async()=>{try{const s=await window.hearth.aiModel
 $('ai-cancel-model').onclick=()=>window.hearth.aiModelCancel();
 window.hearth.onAiModelStatus(s=>{$('ai-model-status').textContent=s.message+(s.percent?' ('+s.percent+'%)':'');$('ai-download-model').disabled=s.state==='downloading';$('ai-cancel-model').hidden=s.state!=='downloading';});
 
-window.hearth.aiEngineStatus().then(s=>{$('ai-engine-status').textContent=s.installed?'Whisper engine ready (included with EverTale)':'Whisper engine not included in this build';}).catch(e=>{$('ai-engine-status').textContent=e.message;});
+window.hearth.aiEngineStatus().then(s=>{$('ai-engine-status').textContent=s.installed?(s.gpuInstalled?'GPU Whisper ready (CPU fallback included)':'CPU Whisper ready · GPU engine not installed yet'):'Whisper engine not included in this build';}).catch(e=>{$('ai-engine-status').textContent=e.message;});
