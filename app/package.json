@@ -1,0 +1,55 @@
+{
+  "name": "evertale-audiobook-player",
+  "version": "1.7.0",
+  "description": "EverTale Audiobook Player for Windows",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win nsis",
+    "dev": "electron . --hearth-dev",
+    "build:dir": "electron-builder --win dir",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer.js && node --check updater.cjs"
+  },
+  "dependencies": {
+    "music-metadata": "^10.9.0",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-reloader": "^1.2.3"
+  },
+  "build": {
+    "appId": "com.hearth.audiobooks",
+    "productName": "EverTale Audiobook Player",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "updater.cjs",
+      "preload.cjs",
+      "index.html",
+      "renderer.js",
+      "styles.css",
+      "package.json",
+      "apply_patch.py",
+      "Apply Update.cmd"
+    ],
+    "win": {
+      "target": "nsis",
+      "artifactName": "EverTale-Audiobook-Player-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "draffey19-cmd",
+        "repo": "evertale-audiobook-player"
+      }
+    ]
+  }
+}

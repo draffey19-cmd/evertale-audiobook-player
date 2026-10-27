@@ -1,0 +1,22 @@
+const {contextBridge,ipcRenderer}=require('electron');
+contextBridge.exposeInMainWorld('hearth',{
+  library:()=>ipcRenderer.invoke('get-library'),
+  updaterStatus:()=>ipcRenderer.invoke('updater-status'),
+  checkUpdates:()=>ipcRenderer.invoke('updater-check'),
+  downloadUpdate:()=>ipcRenderer.invoke('updater-download'),
+  installUpdate:()=>ipcRenderer.invoke('updater-install'),
+  onUpdateStatus:fn=>ipcRenderer.on('updater-status-changed',(_event,data)=>fn(data)),
+  addFolder:()=>ipcRenderer.invoke('choose-folder'),
+  removeFolder:p=>ipcRenderer.invoke('remove-folder',p),
+  rescan:()=>ipcRenderer.invoke('rescan'),
+  edit:(id,changes)=>ipcRenderer.invoke('update-book',id,changes),
+  cover:id=>ipcRenderer.invoke('choose-cover',id),
+  progress:(id,p)=>ipcRenderer.invoke('save-progress',id,p),
+  property:(type,id,value)=>ipcRenderer.invoke('set-property',type,id,value),
+  profile:name=>ipcRenderer.invoke('profile',name),
+  settings:values=>ipcRenderer.invoke('settings',values),
+  backup:()=>ipcRenderer.invoke('backup'),
+  restore:()=>ipcRenderer.invoke('restore'),
+  onChanged:fn=>ipcRenderer.on('library-changed',fn),
+  onScanProgress:fn=>ipcRenderer.on('scan-progress',(_event,data)=>fn(data))
+});
