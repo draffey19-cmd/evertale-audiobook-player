@@ -49,6 +49,30 @@ test('auto scrolling uses offsets within its panel, independently of the panel p
  const h=setup(async()=>({segments,completedChunks:[0]}));h.container.offsetTop=1000;
  await h.reader.refresh();h.container.children[1].offsetTop=240;h.context.time=5;h.reader.update();
  assert.ok(h.container.lastScroll.top>200&&h.container.lastScroll.top<240);
+ assert.equal(h.container.lastScroll.behavior,'smooth');
+});
+
+test('follow scrolling honors live reduced-motion changes without changing passage seeking',async()=>{
+ const h=setup(async()=>({segments}));let reduced=true;
+ h.container.ownerDocument.defaultView={matchMedia(query){
+  assert.equal(query,'(prefers-reduced-motion: reduce)');return {matches:reduced};
+ }};
+ await h.reader.refresh();
+ const passage=h.container.children[1];passage.offsetTop=240;
+ assert.equal(passage.type,'button');
+ assert.equal(passage.getAttribute('aria-label'),'5: second');
+ h.context.time=5;h.reader.update();
+ assert.equal(h.container.lastScroll.behavior,'instant');
+ assert.equal(passage.getAttribute('aria-current'),'true');
+ passage.fire('click');assert.deepEqual(h.seeks,[['a',0,5]]);
+ reduced=false;h.context.time=1;h.reader.update();h.context.time=5;h.reader.update();
+ assert.equal(h.container.lastScroll.behavior,'smooth');
+ reduced=true;h.scrollToggle.checked=false;h.scrollToggle.fire('change');
+ h.container.lastScroll=undefined;h.context.time=1;h.reader.update();h.context.time=5;h.reader.update();
+ assert.equal(h.container.lastScroll,undefined);
+ assert.equal(passage.getAttribute('aria-current'),'true');
+ h.scrollToggle.checked=true;h.scrollToggle.fire('change');
+ assert.equal(h.container.lastScroll.behavior,'instant');
 });
 
 test('reverse seeks replace the highlight and clear it across gaps and boundaries',async()=>{

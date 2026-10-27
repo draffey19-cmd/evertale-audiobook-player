@@ -1,5 +1,13 @@
 # EverTale local AI transcription development report
 
+## SAFE-03: reader keyboard accessibility and reduced motion (October 27, 2026)
+
+- Reviewed native passage buttons, timestamp/text accessible names, labeled Follow playback checkbox, Refresh button, keyboard-focusable transcript region, and focus styles. Added an explicit visible focus outline for the transcript region. Native button activation and clickable seeking remain unchanged; follow updates do not move keyboard focus.
+- Follow scrolling now checks the owning window's current `prefers-reduced-motion: reduce` preference on each update and requests instant scrolling when enabled. Normal scrolling remains smooth, and Follow off still prevents scrolling. No preference listener or lifecycle cleanup is needed.
+- Added a synthetic in-memory regression covering reduced motion, live preference changes, Follow off/on, preserved highlighting, native button type/accessibility name and click seeking. The existing panel-relative scroll test also checks the smooth fallback when matchMedia is unavailable.
+- Validation from `app`: `npm.cmd test` passed **40 tests, zero failures, eight skips**, including all ten reader tests and transcription, search, playback-position and queue regressions. Seven infrastructure tests were explicitly skipped using `EVERTALE_SANDBOX_VALIDATION=1`; the real Vibe test remained opt-in and skipped. `npm.cmd run check` passed. Temporary suite fixtures were routed under `.overnight/tmp`. `git diff --check` passed.
+- Manual checks: source-reviewed keyboard semantics, focus styling, scroll behavior and allowed changed paths on `feature/local-ai-transcription-beta`. No graphical keyboard/screen-reader checks, OS motion-toggle interaction, audible playback, real engine, installed-app or actual-data checks were run. Those UI checks remain for manual acceptance. No dependencies, downloads, commits or remote writes were performed.
+
 ## SAFE-02: whole-book recovery regressions (October 27, 2026)
 
 - Added three focused queue regressions: a disk-backed transcript saved ahead of a stale running queue checkpoint; a previously saved transcript file deleted before recovery; and an unavailable audio track that fails on resume and succeeds after availability is restored. All fixtures are synthetic under `.overnight/tmp`; actual userData was not opened.

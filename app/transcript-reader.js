@@ -23,7 +23,8 @@
     if(scrollToggle.checked){
      // The positioned scrolling container is the passages' offset parent.
      const item=nodes[index],top=item.offsetTop;
-     if(top<container.scrollTop||top+item.offsetHeight>container.scrollTop+container.clientHeight)container.scrollTo({top:Math.max(0,top-container.clientHeight/3),behavior:'smooth'});
+     const reducedMotion=container.ownerDocument.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+     if(top<container.scrollTop||top+item.offsetHeight>container.scrollTop+container.clientHeight)container.scrollTo({top:Math.max(0,top-container.clientHeight/3),behavior:reducedMotion?'instant':'smooth'});
     }
    }
   }

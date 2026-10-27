@@ -78,6 +78,7 @@ button:focus-visible{outline:2px solid #ffd096;outline-offset:2px}
 .reader-heading label{display:flex;align-items:center;gap:6px}
 .reader-heading input{width:auto}
 .reader-passages{position:relative;max-height:340px;overflow-y:auto;overscroll-behavior:contain;border:1px solid #526070;border-radius:10px;padding:12px;background:#111923;scrollbar-gutter:stable}
+.reader-passages:focus-visible{outline:2px solid #ffd096;outline-offset:2px}
 .transcript-passage{display:block;width:100%;text-align:left;background:transparent;color:#cfd7e3;line-height:1.8;font-size:16px;padding:8px 12px;border:1px solid transparent;border-radius:6px;cursor:pointer}
 .transcript-passage:hover,.transcript-passage:focus-visible{background:#293747;border-color:#9cb9cf}
 .transcript-passage.spoken{background:#493d27;color:#ffe1a3;border-left:3px solid #d6a65c}
