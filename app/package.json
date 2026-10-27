@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "music-metadata": "^10.9.0",
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.6.2",
+    "ffmpeg-static": "^5.2.0"
   },
   "devDependencies": {
     "electron": "^33.4.11",
@@ -52,6 +53,9 @@
         "repo": "evertale-audiobook-player",
         "releaseType": "release"
       }
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
     ]
   }
 }
