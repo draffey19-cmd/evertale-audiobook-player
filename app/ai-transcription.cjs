@@ -2,9 +2,39 @@ const {spawn}=require('node:child_process');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
+const https=require('node:https');
 function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  const base=path.join(app.getPath('userData'),'ai-transcripts');
  let job=null;
+ let modelDownload=null;
+ const modelDirectory=path.join(app.getPath('userData'),'ai-models');
+ const modelPath=path.join(modelDirectory,'ggml-base.en.bin');
+ const modelURL='https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin';
+ const downloadStatus=s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-model-status',s);};
+ ipcMain.handle('ai-model-path',async()=>({path:modelPath,installed:await fs.stat(modelPath).then(s=>s.size>10000000).catch(()=>false)}));
+ ipcMain.handle('ai-model-download',async()=>{
+  if(modelDownload)throw Error('Model download already running');
+  await fs.mkdir(modelDirectory,{recursive:true});
+  const temp=modelPath+'.partial';let stopped=false;let request=null;
+  const status={state:'downloading',percent:0,message:'Downloading Whisper base.en model…'};downloadStatus(status);
+  const promise=new Promise((resolve,reject)=>{
+   const get=(url,redirects=0)=>{if(redirects>5)return reject(Error('Too many redirects'));if(!/^https:\/\//.test(url))return reject(Error('Insecure download redirect'));
+    request=https.get(url,response=>{
+     if([301,302,303,307,308].includes(response.statusCode)){const next=new URL(response.headers.location,url);response.resume();return get(next.href,redirects+1);}
+     if(response.statusCode!==200){response.resume();return reject(Error('Model download failed: HTTP '+response.statusCode));}
+     const total=Number(response.headers['content-length'])||0;let bytes=0;
+     const stream=require('node:fs').createWriteStream(temp);
+     response.on('data',chunk=>{bytes+=chunk.length;if(total){status.percent=Math.min(99,Math.round(bytes/total*100));downloadStatus({...status});}});
+     response.on('error',reject);stream.on('error',reject);stream.on('finish',()=>resolve(bytes));response.pipe(stream);
+    });request.on('error',reject);
+   };get(modelURL);
+  });
+  modelDownload={cancel:()=>{stopped=true;request?.destroy(Error('Download cancelled'));}};
+  try{const size=await promise;if(size<10000000)throw Error('Downloaded model is unexpectedly small');await fs.rename(temp,modelPath);downloadStatus({state:'ready',percent:100,message:'Whisper model downloaded'});return {path:modelPath,installed:true};}
+  catch(e){await fs.rm(temp,{force:true}).catch(()=>{});downloadStatus({state:stopped?'cancelled':'error',message:e.message});throw e;}
+  finally{modelDownload=null;}
+ });
+ ipcMain.handle('ai-model-cancel',()=>{if(!modelDownload)return false;modelDownload.cancel();return true;});
  const emit=s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-transcription-status',s);};
  const key=(id,track)=>crypto.createHash('sha256').update(id+':'+track).digest('hex').slice(0,32);
  const file=(id,track)=>path.join(base,key(id,track)+'.json');
