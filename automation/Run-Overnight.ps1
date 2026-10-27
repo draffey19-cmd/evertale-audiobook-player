@@ -37,7 +37,7 @@ function Write-State([string]$State,[string]$Message) {
 }
 function Git([string[]]$Arguments) {
     $oldPreference=$ErrorActionPreference
-    try { $ErrorActionPreference='Continue';$output = @(& git.exe -C $workspaceRoot @Arguments 2>&1);$code=$LASTEXITCODE }
+    try { $ErrorActionPreference='Continue';$output = @(& git.exe -C $workspaceRoot @Arguments 2>$null);$code=$LASTEXITCODE }
     finally { $ErrorActionPreference=$oldPreference }
     if ($code -ne 0) { throw "Git failed: $($output -join ' ')" }
     return $output
