@@ -138,7 +138,7 @@ async function showAiResults(){
 $('ai-search').addEventListener('input',()=>{clearTimeout(aiSearchTimer);aiSearchTimer=setTimeout(showAiResults,250)});
 $('ai-start').onclick=async()=>{
  if(!selected)return;const id=selected.id,track=active?.id===id?trackIndex:selected.progress.track||0;
- const options={binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim(),gpu:$('ai-gpu').checked,time:active?.id===id?audio.currentTime:(selected.progress.time||0)};
+ const options={position:active?.id===id?audio.currentTime:(selected.progress.time||0)};
  try{renderAi(await window.hearth.aiStart(id,track,options));}catch(e){$('ai-status').textContent=e.message;}
 };
 $('ai-cancel').onclick=async()=>{await window.hearth.aiCancel();$('ai-auto').checked=false;};
