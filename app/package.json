@@ -3,7 +3,6 @@
   "version": "1.8.0-beta.1",
   "description": "EverTale Audiobook Player for Windows",
   "main": "main.cjs",
-      "ai-transcription.cjs",
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win nsis",
@@ -28,6 +27,7 @@
     },
     "files": [
       "main.cjs",
+      "ai-transcription.cjs",
       "updater.cjs",
       "preload.cjs",
       "index.html",
