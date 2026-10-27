@@ -50,7 +50,6 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  const save=async(id,track,data)=>{await fs.mkdir(base,{recursive:true});const dest=file(id,track),tmp=dest+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(tmp,JSON.stringify(data));await fs.rename(tmp,dest);};
  ipcMain.handle('ai-transcript-get',async(_,id,track)=>{resolve(id,track);return read(id,track);});
  ipcMain.handle('ai-transcript-search',async(_,id,query)=>{const b=getBooks().find(x=>x.id===id);if(!b)throw Error('Audiobook not found');const q=String(query||'').trim().toLowerCase();if(!q)return [];const found=[];for(let i=0;i<b.tracks.length;i++){const data=await read(id,i);for(const s of data?.segments||[]){if(s.text.toLowerCase().includes(q))found.push({track:i,start:s.start,end:s.end,text:s.text});if(found.length>=100)return found;}}return found;});
- let job=null;
  let auto=null;
  const status=()=>job?.status||{state:'idle'};
  ipcMain.handle('ai-transcript-status',status);
