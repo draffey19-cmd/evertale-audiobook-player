@@ -13,7 +13,7 @@ async function setup(t,options={}){
  let active=0,maxActive=0,cancelled=0;
  const queue=createBookQueue({app:{getPath:()=>dir},ipcMain:{handle:(n,f)=>handlers.set(n,f)},
   getBooks:()=>[{id:'b',title:'Fixture book',tracks:options.tracks||[{duration:181},{duration:89}]}],
-  read:async(id,track)=>({completedChunks:[...completed.get(track)||[]]}),
+  read:options.read?((id,track)=>options.read(id,track,dir)):async(id,track)=>({completedChunks:[...completed.get(track)||[]]}),
   prepare:options.prepare||(()=>Promise.resolve()),isBusy:()=>active>0,canStart:()=>options.canStart!==false,cancelWorker:()=>{cancelled++;options.cancel?.();},retryDelay:1,
   run:async(id,track,chunk)=>{active++;maxActive=Math.max(active,maxActive);calls.push([track,chunk]);try{const result=options.run?await options.run(track,chunk,calls.length):{ok:true};if(result.ok)completed.get(track).add(chunk);return result;}finally{active--;}},
   emit:s=>events.push(s)
@@ -54,6 +54,65 @@ test('interrupted persisted sessions recover paused, never silently restart',asy
  const h=await setup(t,{saved:{id:'b',state:'running',done:1},completed:[0]});
  assert.equal((await h.call('status')).state,'paused');assert.equal(h.calls.length,0);
  await h.call('resume');await until(async()=>(await h.call('status')).state==='completed');assert.deepEqual(h.calls,[[0,1],[0,2],[1,0]]);
+});
+
+async function readSavedTrack(id,track,dir){
+ try{return JSON.parse(await fs.readFile(path.join(dir,`${id}-${track}.json`),'utf8'));}
+ catch(e){if(e.code==='ENOENT')return null;throw e;}
+}
+
+test('recovery trusts transcripts saved ahead of the last queue checkpoint',async t=>{
+ const gate=deferred();t.after(()=>gate.resolve());
+ const h=await setup(t,{saved:{id:'b',state:'running',track:0,chunk:0,done:0,total:4,percent:0},read:readSavedTrack,
+  run:async(track,chunk)=>{
+   await gate.promise;
+   const data=await readSavedTrack('b',track,h.dir)||{completedChunks:[]};
+   data.completedChunks.push(chunk);
+   await fs.writeFile(path.join(h.dir,`b-${track}.json`),JSON.stringify(data));
+   return {ok:true};
+  }});
+ const savedText={completedChunks:[0,1,2],segments:[{start:0,end:1,text:'Saved before interruption'}]};
+ const transcript=path.join(h.dir,'b-0.json');
+ await fs.writeFile(transcript,JSON.stringify(savedText));
+ assert.equal((await h.call('status')).state,'paused');assert.deepEqual(h.calls,[]);
+ await h.call('resume');await until(()=>h.calls.length===1);
+ assert.deepEqual(h.calls,[[1,0]]);
+ const checkpoint=JSON.parse(await fs.readFile(path.join(h.dir,'ai-book-queue.json'),'utf8'));
+ assert.equal(checkpoint.done,3);assert.equal(checkpoint.total,4);assert.equal(checkpoint.percent,75);
+ gate.resolve();await until(async()=>(await h.call('status')).state==='completed');
+ assert.deepEqual(JSON.parse(await fs.readFile(transcript,'utf8')),savedText);
+ assert.equal((await h.call('status')).done,4);
+});
+
+test('recovery retries a disappeared saved transcript instead of trusting checkpoint totals',async t=>{
+ const h=await setup(t,{saved:{id:'b',state:'running',done:4,total:4,percent:100},read:readSavedTrack,
+  run:async(track,chunk)=>{
+   const data=await readSavedTrack('b',track,h.dir)||{completedChunks:[]};
+   data.completedChunks.push(chunk);
+   await fs.writeFile(path.join(h.dir,`b-${track}.json`),JSON.stringify(data));return {ok:true};
+  }});
+ await fs.writeFile(path.join(h.dir,'b-0.json'),JSON.stringify({completedChunks:[0,1,2]}));
+ const missing=path.join(h.dir,'b-1.json');
+ await fs.writeFile(missing,JSON.stringify({completedChunks:[0]}));await fs.unlink(missing);
+ assert.equal((await h.call('status')).state,'paused');assert.deepEqual(h.calls,[]);
+ await h.call('resume');await until(async()=>(await h.call('status')).state==='completed');
+ assert.deepEqual(h.calls,[[1,0]]);
+ assert.deepEqual(await readSavedTrack('b',1,h.dir),{completedChunks:[0]});
+ assert.equal((await h.call('status')).done,4);
+});
+
+test('recovery stops at unavailable audio and resumes without repeating saved sections',async t=>{
+ let missing=true;
+ const h=await setup(t,{saved:{id:'b',state:'running',track:0,chunk:1,done:1},completed:[0],
+  run:async()=>{if(missing)throw Error('Audio file unavailable');return {ok:true};}});
+ assert.equal((await h.call('status')).state,'paused');assert.deepEqual(h.calls,[]);
+ await h.call('resume');await until(async()=>(await h.call('status')).state==='error');
+ const checkpoint=JSON.parse(await fs.readFile(path.join(h.dir,'ai-book-queue.json'),'utf8'));
+ assert.equal(checkpoint.state,'error');assert.match(checkpoint.message,/Audio file unavailable/);
+ assert.equal(checkpoint.done,1);assert.deepEqual(h.calls,[[0,1]]);
+ assert.deepEqual([...h.completed.get(0)],[0]);
+ missing=false;await h.call('resume');await until(async()=>(await h.call('status')).state==='completed');
+ assert.deepEqual(h.calls,[[0,1],[0,1],[0,2],[1,0]]);assert.equal(h.maxActive,1);
 });
 test('busy responses retry within a bound and permanent errors stop with recovery state',async t=>{
  const h=await setup(t,{run:async()=>({ok:false,message:'Vibe transcription failed: HTTP 429 busy'})});

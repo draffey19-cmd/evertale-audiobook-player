@@ -52,7 +52,7 @@
     {
         "id":  "SAFE-02",
         "priority":  50,
-        "status":  "pending",
+        "status":  "completed",
         "safe":  true,
         "instruction":  "Test whole-book recovery when a transcript saves before its queue checkpoint, and when a saved track disappears. Add focused regression tests and repair only discovered recovery failures. Do not open actual userData.",
         "allowedPaths":  [
