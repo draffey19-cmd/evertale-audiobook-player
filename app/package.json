@@ -1,14 +1,15 @@
 {
   "name": "evertale-audiobook-player",
-  "version": "1.7.5",
+  "version": "1.8.0-beta.1",
   "description": "EverTale Audiobook Player for Windows",
   "main": "main.cjs",
+      "ai-transcription.cjs",
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win nsis",
     "dev": "electron . --hearth-dev",
     "build:dir": "electron-builder --win dir",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer.js && node --check updater.cjs"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer.js && node --check updater.cjs && node --check ai-transcription.cjs"
   },
   "dependencies": {
     "music-metadata": "^10.9.0",
