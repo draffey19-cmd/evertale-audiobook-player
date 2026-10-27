@@ -12,7 +12,8 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  const modelDirectory=path.join(app.getPath('userData'),'ai-models');
  const modelPath=path.join(modelDirectory,'ggml-base.en.bin');
  const bundledWhisper=path.join(process.resourcesPath,'ai-bin','whisper-cli.exe');
- ipcMain.handle('ai-engine-status',async()=>({installed:await fs.access(bundledWhisper).then(()=>true).catch(()=>false),path:bundledWhisper}));
+ const gpuWhisper=path.join(process.resourcesPath,'ai-gpu','whisper-cli.exe');
+ ipcMain.handle('ai-engine-status',async()=>({installed:await fs.access(bundledWhisper).then(()=>true).catch(()=>false),path:bundledWhisper,gpuInstalled:await fs.access(gpuWhisper).then(()=>true).catch(()=>false),gpuPath:gpuWhisper}));
  const modelURL='https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin';
  const downloadStatus=s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-model-status',s);};
  ipcMain.handle('ai-model-path',async()=>({path:modelPath,installed:await fs.stat(modelPath).then(s=>s.size>10000000).catch(()=>false)}));
@@ -56,11 +57,14 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  function stop(){if(job){job.cancelled=true;job.child?.kill();}job=null;}
  ipcMain.handle('ai-transcript-cancel',()=>{auto=null;stop();emit({state:'cancelled',message:'Transcription stopped'});return true;});
  const optionsFor=async(options={})=>{
-  const binary=String(options.binary||bundledWhisper).trim();
+  const cpuBinary=bundledWhisper;
+  const gpuAvailable=await fs.access(gpuWhisper).then(()=>true).catch(()=>false);
+  const customBinary=String(options.binary||'').trim();
+  const binary=customBinary||(options.gpu!==false&&gpuAvailable?gpuWhisper:cpuBinary);
   const model=String(options.model||modelPath).trim();
   const ffmpeg=String(options.ffmpeg||bundledFfmpegPath(bundledFfmpeg)||'ffmpeg').trim();
   for(const p of [binary,model]){if(!path.isAbsolute(p))throw Error('Select a valid local Whisper executable and model');await fs.access(p);}
-  return {binary,model,ffmpeg,gpu:options.gpu!==false};
+  return {binary,model,ffmpeg,gpu:options.gpu!==false,cpuBinary,canFallback:binary!==cpuBinary};
  };
  function processChild(task,command,args){
   return new Promise((resolve,reject)=>{
@@ -82,7 +86,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
    task.status={...task.status,percent:35,message:'Transcribing '+Math.floor(start/60)+'m–'+Math.floor((start+CHUNK)/60)+'m…'};emit(task.status);
    const args=['-m',opts.model,'-f',wav,'-oj','-of',output,'-np'];
    if(!opts.gpu)args.push('-ng');
-   try{await processChild(task,opts.binary,args);}catch(e){if(task.cancelled)throw e;if(!opts.gpu)throw e;await processChild(task,opts.binary,[...args,'-ng']);}
+   try{await processChild(task,opts.binary,args);}catch(e){if(task.cancelled)throw e;if(!opts.canFallback)throw e;task.status={...task.status,message:'GPU engine failed; retrying with bundled CPU engine…'};emit(task.status);await processChild(task,opts.cpuBinary,[...args,'-ng']);}
    if(task.cancelled)throw Error('Cancelled');
    const raw=JSON.parse(await fs.readFile(output+'.json','utf8'));
    const segments=(raw.transcription||[]).map(s=>({start:start+Number(s.offsets?.from||0)/1000,end:start+Number(s.offsets?.to||0)/1000,text:String(s.text||'').trim()})).filter(s=>s.text);
