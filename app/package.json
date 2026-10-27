@@ -64,6 +64,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "ai-gpu",
+        "to": "ai-gpu",
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }
