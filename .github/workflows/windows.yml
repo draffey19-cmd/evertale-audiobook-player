@@ -8,6 +8,9 @@ on:
     paths:
       - 'app/**'
       - '.github/workflows/windows.yml'
+concurrency:
+  group: evertale-windows-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-latest
@@ -34,6 +37,26 @@ jobs:
           New-Item -ItemType Directory -Force bin | Out-Null
           Get-ChildItem "$env:RUNNER_TEMP/whisper-build" -Recurse -File | Where-Object { $_.Name -in @('whisper-cli.exe','whisper.dll','ggml.dll','ggml-base.dll','ggml-cpu.dll') } | ForEach-Object { Copy-Item $_.FullName bin/ -Force }
           if (!(Test-Path bin/whisper-cli.exe)) { throw 'Missing Whisper CLI' }
+      - name: Bundle official NVIDIA CUDA Whisper engine (Windows x64)
+        if: github.ref == 'refs/heads/feature/local-ai-transcription-beta'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-win-cuda-11.8.0-x64.zip'
+          $zip = Join-Path $env:RUNNER_TEMP 'whisper-cuda.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'whisper-cuda'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = 'e81c86c542be6e3d7b7245392d4e1c52ab6e5c61dbe38721754bc0ab59d4d027'
+          if ($actual -ne $expected) { throw "CUDA engine checksum mismatch: $actual" }
+          Expand-Archive -Path $zip -DestinationPath $extract
+          New-Item -ItemType Directory -Force ai-gpu | Out-Null
+          $exe = Get-ChildItem $extract -Recurse -File -Filter 'whisper-cli.exe' | Select-Object -First 1
+          if (!$exe) { throw 'Official CUDA archive does not contain whisper-cli.exe' }
+          Copy-Item $exe.FullName 'ai-gpu/whisper-cli.exe' -Force
+          Get-ChildItem $extract -Recurse -File -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName ai-gpu/ -Force }
+          if (!(Test-Path 'ai-gpu/whisper-cli.exe')) { throw 'CUDA executable missing' }
+          Write-Host "Bundled official CUDA 11.8 Whisper engine and $((Get-ChildItem ai-gpu -File).Count) runtime files"
       - name: Build Windows installer
         run: npm run build:win -- --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
         env:
