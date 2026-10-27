@@ -137,6 +137,7 @@ app.whenReady().then(async()=>{
   createWindow();
   initializeUpdater({app,ipcMain,getWindow:()=>win,enabled:!devMode});
   createTranscription({app,ipcMain,getWindow:()=>win,getBooks:()=>books,getTrackPath:key=>tracks.get(key)});
+  ipcMain.handle('ai-browse',async(_,kind)=>{if(!['binary','ffmpeg'].includes(kind))throw Error('Invalid file type');const r=await dialog.showOpenDialog(win,{properties:['openFile'],filters:[{name:'Windows executables',extensions:['exe']}]});return r.canceled?null:r.filePaths[0];});
   scan().then(()=>win?.webContents.send('library-changed')).catch(console.error);
   setInterval(()=>{if(store.settings.autoScan!==false)scan().then(()=>win?.webContents.send('library-changed')).catch(console.error);},300000);
 });
