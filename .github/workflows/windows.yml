@@ -25,6 +25,15 @@ jobs:
         run: npm install
       - name: Check JavaScript
         run: npm run check
+      - name: Compile bundled Whisper engine
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch v1.9.5 https://github.com/ggml-org/whisper.cpp.git "$env:RUNNER_TEMP/whisper-source"
+          cmake -S "$env:RUNNER_TEMP/whisper-source" -B "$env:RUNNER_TEMP/whisper-build" -DGGML_CUDA=OFF -DWHISPER_BUILD_TESTS=OFF
+          cmake --build "$env:RUNNER_TEMP/whisper-build" --config Release --target whisper-cli
+          New-Item -ItemType Directory -Force bin | Out-Null
+          Get-ChildItem "$env:RUNNER_TEMP/whisper-build" -Recurse -File | Where-Object { $_.Name -in @('whisper-cli.exe','whisper.dll','ggml.dll','ggml-base.dll','ggml-cpu.dll') } | ForEach-Object { Copy-Item $_.FullName bin/ -Force }
+          if (!(Test-Path bin/whisper-cli.exe)) { throw 'Missing Whisper CLI' }
       - name: Build Windows installer
         run: npm run build:win -- --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
         env:
