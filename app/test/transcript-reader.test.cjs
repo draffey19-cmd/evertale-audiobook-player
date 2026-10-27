@@ -9,7 +9,7 @@ test('reader highlights timestamp ranges and clears gaps, ends and pre-roll',()=
 });
 function element(){
  const handlers={},attributes={},classes=new Set();
- return {children:[],offsetTop:200,offsetHeight:40,scrollTop:0,clientHeight:100,checked:true,
+ return {children:[],offsetTop:0,offsetHeight:40,scrollTop:0,clientHeight:100,checked:true,
   classList:{add:c=>classes.add(c),remove:c=>classes.delete(c),contains:c=>classes.has(c)},
   setAttribute:(k,v)=>{attributes[k]=v;},removeAttribute:k=>{delete attributes[k];},getAttribute:k=>attributes[k],
   addEventListener:(k,fn)=>{handlers[k]=fn;},fire:k=>handlers[k]?.(),
@@ -43,4 +43,10 @@ test('new background results refresh saved text without calling transcription',a
  let data=null;const h=setup(async()=>data);await h.reader.refresh();assert.match(h.status.textContent,/No saved speech/);
  data={segments,completedChunks:[0]};await h.reader.refresh();assert.equal(h.container.children.length,2);
  h.setContext(null);await h.reader.refresh();assert.equal(h.container.children.length,0);
+});
+
+test('auto scrolling uses offsets within its panel, independently of the panel position',async()=>{
+ const h=setup(async()=>({segments,completedChunks:[0]}));h.container.offsetTop=1000;
+ await h.reader.refresh();h.container.children[1].offsetTop=240;h.context.time=5;h.reader.update();
+ assert.ok(h.container.lastScroll.top>200&&h.container.lastScroll.top<240);
 });

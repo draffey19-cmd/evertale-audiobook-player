@@ -2,12 +2,12 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const path=require('node:path');
-const os=require('node:os');
+const {createTestDirectory}=require('./helpers.cjs');
 const {createBookQueue}=require('../book-transcription.cjs');
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 async function until(fn){const end=Date.now()+4000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,5));}assert.fail('Queue timeout');}
 async function setup(t,options={}){
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'evertale-book-test-'));
+ const dir=await createTestDirectory('evertale-book-test-');
  if(options.saved)await fs.writeFile(path.join(dir,'ai-book-queue.json'),JSON.stringify(options.saved));
  const handlers=new Map(),events=[],calls=[],completed=new Map([[0,new Set(options.completed||[])],[1,new Set()]]);
  let active=0,maxActive=0,cancelled=0;

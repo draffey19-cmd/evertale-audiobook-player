@@ -21,7 +21,8 @@
    if(nodes[index]){
     nodes[index].classList.add('spoken');nodes[index].setAttribute('aria-current','true');
     if(scrollToggle.checked){
-     const item=nodes[index],top=item.offsetTop-container.offsetTop;
+     // The positioned scrolling container is the passages' offset parent.
+     const item=nodes[index],top=item.offsetTop;
      if(top<container.scrollTop||top+item.offsetHeight>container.scrollTop+container.clientHeight)container.scrollTo({top:Math.max(0,top-container.clientHeight/3),behavior:'smooth'});
     }
    }

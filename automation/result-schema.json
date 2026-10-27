@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "status", "summary", "tests", "manualTesting"],
+  "properties": {
+    "taskId": {"type": "string"},
+    "status": {"type": "string", "enum": ["completed", "blocked", "failed"]},
+    "summary": {"type": "string"},
+    "tests": {"type": "array", "items": {"type": "string"}},
+    "manualTesting": {"type": "array", "items": {"type": "string"}}
+  }
+}

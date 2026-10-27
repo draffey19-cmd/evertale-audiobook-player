@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
-const os=require('node:os');
+const {createTestDirectory}=require('./helpers.cjs');
 const path=require('node:path');
 const {EventEmitter}=require('node:events');
 const {createTranscription}=require('../ai-transcription.cjs');
@@ -14,7 +14,7 @@ async function until(check){
  assert.fail('Timed out waiting for transcription');
 }
 async function harness(t,overrides={}){
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'evertale-ai-test-'));
+ const dir=await createTestDirectory('evertale-ai-test-');
  const handlers=new Map(),events=[],children=[],app=new EventEmitter();
  app.getPath=()=>dir;
  let loaded=true,loads=0,requests=0;
