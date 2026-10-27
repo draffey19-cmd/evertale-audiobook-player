@@ -1,6 +1,7 @@
 const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('hearth',{
   library:()=>ipcRenderer.invoke('get-library'),
+  aiEngineStatus:()=>ipcRenderer.invoke('ai-engine-status'),
   aiModelPath:()=>ipcRenderer.invoke('ai-model-path'),
   aiModelDownload:()=>ipcRenderer.invoke('ai-model-download'),
   aiModelCancel:()=>ipcRenderer.invoke('ai-model-cancel'),
