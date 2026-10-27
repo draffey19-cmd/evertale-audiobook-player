@@ -130,7 +130,7 @@ updatePlay();
 let aiSearchTimer=null;
 async function showAiResults(){
  const b=selected;if(!b)return;const q=$('ai-search').value.trim();$('ai-results').replaceChildren();if(!q)return;
- try{const hits=await window.hearth.aiSearch(b.id,q);if(selected?.id!==b.id)return;
+ try{const hits=await window.hearth.aiSearch(b.id,q);if(selected?.id!==b.id||$('ai-search').value.trim()!==q)return;
  if(!hits.length){$('ai-results').textContent='No matches in saved transcripts.';return;}
  for(const hit of hits)$('ai-results').append(button(duration(hit.start)+' · '+hit.text,()=>playBook(b,hit.track,hit.start),'chapter'));
  }catch(e){$('ai-results').textContent=e.message;}
@@ -141,17 +141,20 @@ $('ai-start').onclick=async()=>{
  const options={position:active?.id===id?audio.currentTime:(selected.progress.time||0)};
  try{renderAi(await window.hearth.aiStart(id,track,options));}catch(e){$('ai-status').textContent=e.message;}
 };
-$('ai-cancel').onclick=async()=>{await window.hearth.aiCancel();$('ai-auto').checked=false;};
-let aiPositionSent=0;
+$('ai-cancel').onclick=async()=>{aiSyncVersion++;$('ai-auto').checked=false;await window.hearth.aiCancel();};
+let aiPositionSent=0,aiSyncing=false,aiSyncVersion=0;
 function aiOptions(){return {};}
 async function syncAiPosition(force=false){
- if(!$('ai-auto').checked||!active||audio.paused)return;
+ if(aiSyncing||!$('ai-auto').checked||!active||audio.paused)return;
  if(!force&&Date.now()-aiPositionSent<5000)return;
  aiPositionSent=Date.now();
- try{const ok=await window.hearth.aiAutoPosition(active.id,trackIndex,audio.currentTime);if(!ok)await window.hearth.aiAutoStart(active.id,trackIndex,audio.currentTime,aiOptions());}
- catch(e){$('ai-status').textContent=e.message;$('ai-auto').checked=false;}
+ const version=aiSyncVersion,id=active.id;aiSyncing=true;
+ try{const ok=await window.hearth.aiAutoPosition(id,trackIndex,audio.currentTime);if(!ok&&version===aiSyncVersion&&$('ai-auto').checked&&!audio.paused&&active?.id===id)await window.hearth.aiAutoStart(id,trackIndex,audio.currentTime,aiOptions());}
+ catch(e){if(version===aiSyncVersion){$('ai-status').textContent=e.message;$('ai-auto').checked=false;}}
+ finally{aiSyncing=false;}
 }
 $('ai-auto').addEventListener('change',async()=>{
+ aiSyncVersion++;
  if(!$('ai-auto').checked){await window.hearth.aiCancel();return;}
  if(!active){$('ai-status').textContent='Play an audiobook to start automatic transcription.';return;}
  try{await window.hearth.aiAutoStart(active.id,trackIndex,audio.currentTime,aiOptions());}catch(e){$('ai-status').textContent=e.message;$('ai-auto').checked=false;}
@@ -159,7 +162,7 @@ $('ai-auto').addEventListener('change',async()=>{
 audio.addEventListener('timeupdate',()=>syncAiPosition());
 audio.addEventListener('seeked',()=>syncAiPosition(true));
 audio.addEventListener('play',()=>syncAiPosition(true));
-function renderAi(s){if(!s)return;$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.sectionSaved||s.state==='completed')showAiResults();}
+function renderAi(s){if(!s)return;if(s.state==='error'){$('ai-auto').checked=false;aiSyncVersion++;}$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.sectionSaved||s.state==='completed')showAiResults();}
 window.hearth.onAiStatus(renderAi);window.hearth.aiStatus().then(renderAi).catch(console.error);
 
 window.hearth.aiVibeConfig().then(c=>{$('vibe-binary').value=c.binary||'';$('vibe-model').value=c.model||'';}).catch(console.error);

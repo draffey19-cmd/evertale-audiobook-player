@@ -4,6 +4,7 @@
   "description": "EverTale Audiobook Player for Windows",
   "main": "main.cjs",
   "scripts": {
+    "test": "node --test test/*.test.cjs",
     "start": "electron .",
     "build:win": "electron-builder --win nsis",
     "dev": "electron . --hearth-dev",

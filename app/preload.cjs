@@ -6,7 +6,6 @@ contextBridge.exposeInMainWorld('hearth',{
   aiVibeBrowse:kind=>ipcRenderer.invoke('ai-vibe-browse',kind),
   aiVibeReady:()=>ipcRenderer.invoke('ai-vibe-ready'),
   aiStart:(id,track,options)=>ipcRenderer.invoke('ai-transcript-start',id,track,options),
-  aiPosition:(id,track,time,playing)=>ipcRenderer.invoke('ai-transcript-position',id,track,time,playing),
   aiAutoStart:(id,track,position,options)=>ipcRenderer.invoke('ai-auto-start',id,track,position,options),
   aiAutoPosition:(id,track,position)=>ipcRenderer.invoke('ai-auto-position',id,track,position),
   aiCancel:()=>ipcRenderer.invoke('ai-transcript-cancel'),
