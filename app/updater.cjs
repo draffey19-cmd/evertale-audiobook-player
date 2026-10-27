@@ -1,14 +1,13 @@
 // Update checks use the configured GitHub Releases feed.
 // No update is downloaded or installed without a user action.
 function initializeUpdater({app, ipcMain, getWindow, enabled}) {
-  const pkg = require('./package.json');
-  const publish = pkg.build?.publish?.[0];
-  const configured = !!publish && publish.provider === 'github' && !publish.owner.includes('REPLACE_') && /^[a-zA-Z0-9-]+$/.test(publish.owner) && /^[a-zA-Z0-9_.-]+$/.test(publish.repo);
+  const configured = true; // The public GitHub release feed is set explicitly below.
   let status = {state:'unavailable', message: !app.isPackaged ? 'Updates work in installed builds only.' : !configured ? 'Configure your GitHub Releases repository to enable updates.' : 'Ready to check for updates. Private GitHub releases require authentication; public release hosting must be configured for one-click updates.'};
   const send = (next) => {status={...status,...next}; const win=getWindow(); if(win && !win.isDestroyed())win.webContents.send('updater-status-changed',status);return status;};
   let updater=null;
   if (enabled && app.isPackaged && configured) {
     const {autoUpdater} = require('electron-updater');updater=autoUpdater;
+    updater.setFeedURL({provider:'github',owner:'draffey19-cmd',repo:'evertale-audiobook-player'});
     updater.autoDownload=false;updater.autoInstallOnAppQuit=false;
     updater.on('checking-for-update',()=>send({state:'checking',message:'Checking GitHub Releases…'}));
     updater.on('update-available',info=>send({state:'available',version:info.version,message:`Version ${info.version} is available.`}));
