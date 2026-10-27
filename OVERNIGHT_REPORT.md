@@ -1,5 +1,12 @@
 # EverTale local AI transcription development report
 
+## SAFE-01: reader edge-case regressions (October 27, 2026)
+
+- Added four synthetic reader regressions covering reverse seeks through exclusive ends/gaps/pre-roll, repeated start/end timestamps and zero-length passages, older refresh failures arriving after newer success/failure, and rejection after the selected context changes before another refresh starts. Assertions cover highlight/ARIA cleanup, stable passage selection, clickable timestamps, and continued highlighting of retained text after a refresh error.
+- The context-change rejection regression initially failed: the error path checked only request generation and could display an old book's error. Added the same current-context check already used by successful loads. No other reader behavior required repair.
+- Validation from `app`: `npm.cmd run check` passed; `npm.cmd test` passed **36 tests, zero failures, eight skips** (seven infrastructure tests explicitly skipped in this environment and the opt-in real Vibe test skipped). All nine reader tests passed. The initial regression run had one expected failure exposing the repaired error path. `git diff --check` passed.
+- Manual checks: reviewed the patch and confirmed the requested branch and three allowed changed paths. No graphical, audible playback, installed-app, real-engine, or real-data checks were run for this task; those acceptance checks remain outstanding above. Reader fixtures are synthetic in-memory objects; suite temporary fixtures use project-local `.overnight/tmp`. No models, dependencies, or external services were needed. No commit or remote write was performed.
+
 Date: October 27, 2026. Branch: `feature/local-ai-transcription-beta`.
 
 ## Scope and baseline

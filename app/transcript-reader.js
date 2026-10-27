@@ -46,7 +46,7 @@
     const sections=data?.completedChunks?.length||0;
     status.textContent=context.name+' | '+(segments.length?`${sections} saved section(s). Gaps may not be transcribed yet.`:'No saved speech here yet. Transcribe a section or enable background transcription.');
     update();
-   }catch(e){if(token===generation)status.textContent='Cannot load transcript: '+e.message;}
+   }catch(e){if(token===generation&&key(getContext())===nextKey)status.textContent='Cannot load transcript: '+e.message;}
   }
   scrollToggle.addEventListener('change',()=>{highlight=-1;for(const n of nodes){n.classList.remove('spoken');n.removeAttribute('aria-current');}update();});
   return {refresh,update};

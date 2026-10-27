@@ -50,3 +50,51 @@ test('auto scrolling uses offsets within its panel, independently of the panel p
  await h.reader.refresh();h.container.children[1].offsetTop=240;h.context.time=5;h.reader.update();
  assert.ok(h.container.lastScroll.top>200&&h.container.lastScroll.top<240);
 });
+
+test('reverse seeks replace the highlight and clear it across gaps and boundaries',async()=>{
+ const h=setup(async()=>({segments}));await h.reader.refresh();
+ for(const [time,index] of [[6,1],[5,1],[4,-1],[3,-1],[2,0],[1,0],[0,-1],[7,-1],[5,1]]){
+  h.context.time=time;h.reader.update();
+  h.container.children.forEach((node,i)=>{
+   assert.equal(node.classList.contains('spoken'),i===index,`spoken at ${time}, node ${i}`);
+   assert.equal(node.getAttribute('aria-current'),i===index?'true':undefined);
+  });
+ }
+});
+
+test('repeated starts and ends select a stable active passage, including reverse seeks',async()=>{
+ const repeated=[{start:5,end:7,text:'later'},{start:1,end:5,text:'long'},
+  {start:1,end:3,text:'short'},{start:1,end:1,text:'empty'},{start:3,end:5,text:'middle'}];
+ const h=setup(async()=>({segments:repeated}));await h.reader.refresh();
+ assert.deepEqual(h.container.children.map(n=>n.textContent),['long','short','empty','middle','later']);
+ for(const [time,index] of [[1,1],[2,1],[3,3],[5,4],[7,-1],[5,4],[4,3],[2,1],[1,1],[0,-1]]){
+  h.context.time=time;h.reader.update();
+  assert.deepEqual(h.container.children.map(n=>n.classList.contains('spoken')),
+   h.container.children.map((_,i)=>i===index),`time ${time}`);
+ }
+ h.container.children[2].fire('click');assert.deepEqual(h.seeks,[['a',0,1]]);
+});
+
+test('older refresh errors cannot overwrite newer success or newer errors',async()=>{
+ const pending=[];const h=setup(()=>new Promise((resolve,reject)=>pending.push({resolve,reject})));
+ const old=h.reader.refresh(),fresh=h.reader.refresh();
+ pending[1].resolve({segments});await fresh;
+ const success=h.status.textContent,children=h.container.children;
+ pending[0].reject(new Error('stale failure'));await old;
+ assert.equal(h.status.textContent,success);assert.equal(h.container.children,children);
+ const older=h.reader.refresh(),newer=h.reader.refresh();
+ pending[3].reject(new Error('latest failure'));await newer;
+ pending[2].reject(new Error('older failure'));await older;
+ assert.equal(h.status.textContent,'Cannot load transcript: latest failure');
+ assert.equal(h.container.children,children);
+ h.context.time=5;h.reader.update();
+ assert.equal(children[1].getAttribute('aria-current'),'true');
+});
+
+test('refresh errors are ignored after context changes even before the next refresh',async()=>{
+ let reject;const h=setup(()=>new Promise((_,r)=>{reject=r;}));
+ const old=h.reader.refresh();const status=h.status.textContent;
+ h.setContext({id:'b',track:1,name:'Other',time:0,playingTrack:false});
+ reject(new Error('wrong book failure'));await old;
+ assert.equal(h.status.textContent,status);
+});
