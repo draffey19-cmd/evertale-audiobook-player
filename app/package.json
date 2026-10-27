@@ -9,7 +9,7 @@
     "build:win": "electron-builder --win nsis",
     "dev": "electron . --hearth-dev",
     "build:dir": "electron-builder --win dir",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer.js && node --check updater.cjs && node --check ai-transcription.cjs"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer.js && node --check updater.cjs && node --check ai-transcription.cjs && node --check transcript-reader.js"
   },
   "dependencies": {
     "music-metadata": "^10.9.0",
@@ -30,6 +30,7 @@
     "files": [
       "main.cjs",
       "ai-transcription.cjs",
+      "transcript-reader.js",
       "updater.cjs",
       "preload.cjs",
       "index.html",

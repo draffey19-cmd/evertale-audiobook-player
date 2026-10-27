@@ -2,6 +2,7 @@ const $=id=>document.getElementById(id);
 let desiredSpeed=1;
 let books=[],folders=[],selected=null,active=null,trackIndex=0,sleepTimer=null,sleepEnd=0,mode='all',lastBook=null,profile='Default',settings={},sleepChapter=false,mini=false;
 const audio=$('audio');
+let transcriptReader=null;
 
 // Electron does not implement the browser's native window.prompt().
 // Use an in-app dialog instead, including for optional bookmark notes.
@@ -50,10 +51,10 @@ function render(){
 function showDetail(b){const priorQuery=selected?.id===b.id?$('chapter-search').value:'';selected=b;$('detail').hidden=false;cover($('detail-cover'),b.cover);$('detail-title').textContent=b.title;$('detail-author').textContent=b.author;$('detail-duration').textContent=`${duration(b.duration)} · ${b.tracks.length} file${b.tracks.length===1?'':'s'}`;$('chapters').replaceChildren();$('favorite').textContent=b.favorite?'★ Unfavorite':'☆ Favorite';$('finished-btn').textContent=b.finished?'↶ Mark unfinished':'✓ Mark finished';$('bookmarks').replaceChildren();for(const [markIndex,mark] of (b.bookmarks||[]).entries()){const row=document.createElement('div');row.className='bookmark-row';const jump=button(`${b.tracks[mark.track]?.name||'Chapter'} · ${duration(mark.time)} · ${mark.note||'Bookmark'}`,()=>playBook(b,mark.track,mark.time),'chapter');jump.title='Play from this bookmark';const remove=button('Remove',async()=>{if(!confirm('Remove this bookmark?'))return;try{const remaining=(selected?.bookmarks||[]).filter((_,i)=>i!==markIndex);await window.hearth.property('bookmarks',b.id,remaining);await refresh();}catch(e){alert('Could not remove bookmark: '+e.message);}},'ghost');remove.title='Remove bookmark';row.append(jump,remove);$('bookmarks').append(row);}
   const chapters=b.chapters.length?b.chapters:b.tracks.map((t,i)=>({track:i,time:0,title:t.name}));
   if(!chapters.length){const p=document.createElement('p');p.textContent='No embedded chapters detected.';$('chapters').append(p);}
-  for(const c of chapters){const el=button(c.title,()=>playBook(b,c.track,c.time),'chapter');el.dataset.title=c.title.toLowerCase();$('chapters').append(el);} $('chapter-search').value=priorQuery; $('chapter-search').dispatchEvent(new Event('input'));
+  for(const c of chapters){const el=button(c.title,()=>playBook(b,c.track,c.time),'chapter');el.dataset.title=c.title.toLowerCase();$('chapters').append(el);} $('chapter-search').value=priorQuery; $('chapter-search').dispatchEvent(new Event('input'));transcriptReader?.refresh();
 }
 async function playBook(b,index=null,time=null){if(!b?.tracks.length)return;active=b;trackIndex=index??Math.min(b.progress.track||0,b.tracks.length-1);let start=time??b.progress.time??0;start=Math.max(0,start);$('player').hidden=false;cover($('mini-cover'),b.cover);$('now-title').textContent=b.title;$('now-author').textContent=b.author;loadTrack(start,true);}
-function loadTrack(start=0,autoplay=false){if(!active)return;const track=active.tracks[trackIndex];if(!track)return;audio.src=`hearth-media://${track.key}/audio`;audio.load();audio.playbackRate=desiredSpeed;audio.addEventListener('loadedmetadata',function setStart(){audio.removeEventListener('loadedmetadata',setStart);if(Number.isFinite(audio.duration))audio.currentTime=Math.min(start,Math.max(0,audio.duration-0.1));if(autoplay)audio.play().catch(()=>{});},{once:false});updatePlay();}
+function loadTrack(start=0,autoplay=false){if(!active)return;transcriptReader?.refresh();const track=active.tracks[trackIndex];if(!track)return;audio.src=`hearth-media://${track.key}/audio`;audio.load();audio.playbackRate=desiredSpeed;audio.addEventListener('loadedmetadata',function setStart(){audio.removeEventListener('loadedmetadata',setStart);if(Number.isFinite(audio.duration))audio.currentTime=Math.min(start,Math.max(0,audio.duration-0.1));if(autoplay)audio.play().catch(()=>{});},{once:false});updatePlay();}
 function updatePlay(){$('toggle').textContent=audio.paused?'▶':'Ⅱ';}
 function seekChapter(direction){
   if(!active)return;
@@ -174,3 +175,16 @@ for(const kind of ['binary','model']){
 }
 $('vibe-test').onclick=async()=>{$('vibe-test').disabled=true;$('ai-engine-status').textContent='Starting Vibe and loading model…';try{await window.hearth.aiVibeReady();$('ai-engine-status').textContent='Vibe ready for transcription';}catch(e){$('ai-engine-status').textContent=e.message;}finally{$('vibe-test').disabled=false;}};
 window.hearth.aiEngineStatus().then(s=>{$('ai-engine-status').textContent=!s.installed?'Vibe server not detected at 127.0.0.1:3030':s.ready?'Vibe server ready with model loaded':'Vibe server detected; load a speech model';}).catch(e=>{$('ai-engine-status').textContent=e.message;});
+
+
+transcriptReader=window.EverTaleReader.createReader({
+ container:$('reader-passages'),status:$('reader-status'),scrollToggle:$('reader-scroll'),
+ getContext:()=>{if(!selected)return null;const playingTrack=active?.id===selected.id;const track=playingTrack?trackIndex:selected.progress.track||0;return {id:selected.id,track,name:selected.tracks[track]?.name||'Track',playingTrack,time:playingTrack?audio.currentTime:0};},
+ load:(id,track)=>window.hearth.aiGet(id,track),format:duration,
+ seek:(id,track,time)=>{const b=books.find(b=>b.id===id);if(b)playBook(b,track,time);}
+});
+$('reader-refresh').onclick=()=>transcriptReader.refresh();
+try{$('reader-scroll').checked=localStorage.getItem('reader-follow')!=='false';}catch{}
+$('reader-scroll').addEventListener('change',()=>{try{localStorage.setItem('reader-follow',String($('reader-scroll').checked));}catch{}});
+for(const event of ['timeupdate','seeked','loadedmetadata'])audio.addEventListener(event,()=>transcriptReader.update());
+window.hearth.onAiStatus(s=>{if(s.sectionSaved||s.state==='completed')transcriptReader.refresh();});

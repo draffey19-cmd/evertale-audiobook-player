@@ -62,3 +62,12 @@ Downloaded test engine/model and synthetic WAV remain in ignored `app/dist/ai-sm
 6. Test an already-running external Vibe server, port conflicts, model unloading/server restart during playback, and shutdown while loading a large model. Aborting the client request may leave externally owned Vibe inference running briefly; a subsequent request can report HTTP 429. Failed sections remain retryable, and automatic mode stops on error.
 
 The fixed port 3030 and dependence on a separately downloaded compatible Vibe executable/model remain existing beta constraints. Full graphical interaction, installer acceptance, and the cases above are not claimed as automated passes. No remote CI run was triggered.
+
+
+# Follow-along and unattended development assignment
+
+## A-B: inspection and follow-along reader
+
+Continued on `feature/local-ai-transcription-beta` from clean `97d2bf2`. The reader displays saved text for the selected book and current playback track, highlights only timestamp ranges (clears gaps), scrolls inside its own panel, remembers the Follow playback toggle, and seeks through clickable passages. Track/book changes invalidate stale loads. New saved section events refresh text; reading never starts transcription. Empty and partially recognized tracks have explicit status messages.
+
+Added four reader regression tests. `npm.cmd run check` passed; `npm.cmd test` passed 22 isolated tests with the real-engine test skipped without opt-in variables. Full real-engine, packaged, and installer checks follow the remaining implementation work.
