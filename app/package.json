@@ -57,21 +57,6 @@
     "asarUnpack": [
       "node_modules/ffmpeg-static/**"
     ],
-    "extraResources": [
-      {
-        "from": "bin",
-        "to": "ai-bin",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "ai-gpu",
-        "to": "ai-gpu",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ]
+    "extraResources": []
   }
 }
