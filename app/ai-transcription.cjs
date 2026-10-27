@@ -3,6 +3,8 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const https=require('node:https');
+const bundledFfmpeg=require('ffmpeg-static');
+const bundledFfmpegPath=appPath=>appPath&&appPath.includes('app.asar')?appPath.replace('app.asar','app.asar.unpacked'):appPath;
 function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  const base=path.join(app.getPath('userData'),'ai-transcripts');
  let job=null;
@@ -51,11 +53,12 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
   const model=String(options.model||'').trim();
   if(!binary||!model)throw Error('Configure a local whisper.cpp executable and model first');
   for(const p of [binary,model])await fs.access(p);
+  if(!path.isAbsolute(binary)||!path.isAbsolute(model))throw Error('Select valid local executable and model paths');
   const out=path.join(base,'job-'+crypto.randomUUID());await fs.mkdir(base,{recursive:true});
   const task={cancelled:false,child:null,status:{state:'running',id,track,percent:0,message:'Starting local transcription…'}};job=task;emit(task.status);
   (async()=>{try{
    // whisper.cpp's CLI accepts audio WAV; ffmpeg converts compressed audiobook formats.
-   const ffmpeg=String(options.ffmpeg||'ffmpeg').trim();
+   const ffmpeg=String(options.ffmpeg||bundledFfmpegPath(bundledFfmpeg)||'ffmpeg').trim();
    const wav=out+'.wav';
    await new Promise((resolve,reject)=>{const p=spawn(ffmpeg,['-nostdin','-y','-i',source,'-ar','16000','-ac','1','-c:a','pcm_s16le',wav],{windowsHide:true});task.child=p;p.on('error',reject);p.on('close',code=>code===0?resolve():reject(Error('Audio conversion failed ('+code+')')));});
    if(task.cancelled)return;
@@ -67,6 +70,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
    if(task.cancelled)return;
    const raw=JSON.parse(await fs.readFile(out+'.json','utf8'));
    const segments=(raw.transcription||[]).map(s=>({start:Number(s.offsets?.from||0)/1000,end:Number(s.offsets?.to||0)/1000,text:String(s.text||'').trim()})).filter(s=>s.text);
+   if(!segments.length)throw Error('Whisper produced an empty transcript');
    const data={id,track,createdAt:new Date().toISOString(),segments};
    const destination=file(id,track),tmp=destination+'.tmp';await fs.writeFile(tmp,JSON.stringify(data));await fs.rename(tmp,destination);
    task.status={state:'completed',id,track,percent:100,message:'Transcript saved locally',segments:segments.length};emit(task.status);
