@@ -86,8 +86,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  async function transcribeChunk(task,id,track,chunk,opts){
   const {source}=resolve(id,track);
   const start=chunk*CHUNK;
-  const output=path.join(base,'job-'+crypto.randomUUID());
-  const wav=output+'.wav';
+  const wav=path.join(base,'job-'+crypto.randomUUID()+'.wav');
   try{
    task.status={state:'running',id,track,chunk,percent:0,message:'Preparing audio '+Math.floor(start/60)+'m–'+Math.floor((start+CHUNK)/60)+'m…'};emit(task.status);
    await processChild(task,opts.ffmpeg,['-nostdin','-y','-ss',String(start),'-i',source,'-t',String(CHUNK),'-ar','16000','-ac','1','-c:a','pcm_s16le',wav]);
@@ -119,13 +118,13 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
   job=task;emit(task.status);
   try{await transcribeChunk(task,id,track,chunk,opts);}
   catch(e){if(!task.cancelled){task.status={state:'error',id,track,message:e.message};emit(task.status);if(auto)auto=null;}}
-  finally{if(job===task)job=null;if(task.cancelled&&auto)setImmediate(pump);}
+  finally{if(job===task)job=null;if(auto&&(!task.cancelled||!job))setImmediate(pump);}
   return !task.cancelled&&task.status.state==='completed';
  }
  async function nextChunk(id,track,position){
   const {b}=resolve(id,track);
   const length=Number(b.tracks[track].duration)||0;
-  const max=length>0?Math.ceil(length/CHUNK):1;
+  const max=length>0?Math.ceil(length/CHUNK):Math.max(1,Math.ceil((Number(position)||0)/CHUNK)+1);
   const data=await read(id,track);
   const completed=new Set(data?.completedChunks||[]);
   const focus=Math.min(max-1,Math.max(0,Math.floor(position/CHUNK)));
