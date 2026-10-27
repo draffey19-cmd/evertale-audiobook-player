@@ -11,6 +11,8 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  let modelDownload=null;
  const modelDirectory=path.join(app.getPath('userData'),'ai-models');
  const modelPath=path.join(modelDirectory,'ggml-base.en.bin');
+ const bundledWhisper=path.join(process.resourcesPath,'ai-bin','whisper-cli.exe');
+ ipcMain.handle('ai-engine-status',async()=>({installed:await fs.access(bundledWhisper).then(()=>true).catch(()=>false),path:bundledWhisper}));
  const modelURL='https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin';
  const downloadStatus=s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-model-status',s);};
  ipcMain.handle('ai-model-path',async()=>({path:modelPath,installed:await fs.stat(modelPath).then(s=>s.size>10000000).catch(()=>false)}));
@@ -49,7 +51,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  ipcMain.handle('ai-transcript-start',async(_,id,track,options={})=>{
   if(job)throw Error('Another transcription is running');
   const {source}=resolve(id,track);
-  const binary=String(options.binary||'').trim();
+  const binary=String(options.binary||bundledWhisper).trim();
   const model=String(options.model||'').trim();
   if(!binary||!model)throw Error('Configure a local whisper.cpp executable and model first');
   for(const p of [binary,model])await fs.access(p);
