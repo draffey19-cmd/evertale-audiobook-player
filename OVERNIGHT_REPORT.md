@@ -71,3 +71,10 @@ The fixed port 3030 and dependence on a separately downloaded compatible Vibe ex
 Continued on `feature/local-ai-transcription-beta` from clean `97d2bf2`. The reader displays saved text for the selected book and current playback track, highlights only timestamp ranges (clears gaps), scrolls inside its own panel, remembers the Follow playback toggle, and seeks through clickable passages. Track/book changes invalidate stale loads. New saved section events refresh text; reading never starts transcription. Empty and partially recognized tracks have explicit status messages.
 
 Added four reader regression tests. `npm.cmd run check` passed; `npm.cmd test` passed 22 isolated tests with the real-engine test skipped without opt-in variables. Full real-engine, packaged, and installer checks follow the remaining implementation work.
+
+
+## C: whole-book queue
+
+Added a persistent whole-book queue that traverses known-duration tracks in order and skips all completed sections. It shares the existing worker with manual/automatic listening, serializes queue checkpoints, reports saved-section progress, retries HTTP 429/503 at most three times, and stops with a recoverable error on other failures. Pause finishes the current section; Cancel interrupts owned work. Restart recovery is paused and requires explicit Resume. Tracks with unknown duration produce a rescan instruction rather than silently omitting their tail. Completed transcripts are the source of truth on resume, including after interruption between transcript and queue saves.
+
+Added seven queue tests plus a backend integration regression. All 30 isolated tests pass (one optional real-engine test skipped in this run). No installed application or real library files were opened for these checks.

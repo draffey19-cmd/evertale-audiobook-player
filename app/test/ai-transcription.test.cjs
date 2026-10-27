@@ -179,3 +179,13 @@ test('nonfinite playback position is normalized before selecting a section',asyn
  await until(()=>h.events.some(e=>e.state==='completed'));
  assert.deepEqual((await h.call('ai-transcript-get','book',0)).completedChunks,[0]);
 });
+
+test('whole-book queue shares worker ownership and preserves automatic-listening exclusion',async t=>{
+ const h=await harness(t);await h.call('ai-book-start','book');
+ await assert.rejects(h.call('ai-auto-start','book',0,0),/Pause the whole-book/);
+ await assert.rejects(h.call('ai-transcript-start','book',0,{}),/Another transcription/);
+ await until(async()=>(await h.call('ai-book-status')).state==='completed');
+ assert.deepEqual((await h.call('ai-transcript-get','book',0)).completedChunks,[0,1,2]);
+ assert.deepEqual((await h.call('ai-transcript-get','book',1)).completedChunks,[0]);
+ assert.equal(h.requests,4);
+});

@@ -188,3 +188,22 @@ try{$('reader-scroll').checked=localStorage.getItem('reader-follow')!=='false';}
 $('reader-scroll').addEventListener('change',()=>{try{localStorage.setItem('reader-follow',String($('reader-scroll').checked));}catch{}});
 for(const event of ['timeupdate','seeked','loadedmetadata'])audio.addEventListener(event,()=>transcriptReader.update());
 window.hearth.onAiStatus(s=>{if(s.sectionSaved||s.state==='completed')transcriptReader.refresh();});
+
+
+let bookQueueState={state:'idle'};
+function renderBookQueue(s){
+ bookQueueState=s;const running=s.state==='running';
+ $('ai-book-status').textContent=(s.title?s.title+' | ':'')+(s.message||s.state)+(s.total?' | '+s.done+'/'+s.total+' sections ('+s.percent+'%)':'');
+ $('ai-book-progress').value=s.percent||0;
+ $('ai-book-start').disabled=running;$('ai-book-pause').disabled=!running;
+ $('ai-book-resume').disabled=!s.id||!['paused','error','cancelled'].includes(s.state);
+ $('ai-book-cancel').disabled=!s.id||['idle','cancelled','completed'].includes(s.state);
+ if(running){$('ai-auto').checked=false;aiSyncVersion++;}
+}
+async function queueAction(action){try{renderBookQueue(await action());}catch(e){$('ai-book-status').textContent=e.message;}}
+$('ai-book-start').onclick=()=>{if(selected)queueAction(()=>window.hearth.aiBookStart(selected.id));};
+$('ai-book-pause').onclick=()=>queueAction(()=>window.hearth.aiBookPause());
+$('ai-book-resume').onclick=()=>queueAction(()=>window.hearth.aiBookResume());
+$('ai-book-cancel').onclick=()=>queueAction(()=>window.hearth.aiBookCancel());
+window.hearth.onAiBookStatus(renderBookQueue);
+window.hearth.aiBookStatus().then(renderBookQueue).catch(e=>{$('ai-book-status').textContent=e.message;});

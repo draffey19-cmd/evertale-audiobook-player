@@ -2,12 +2,14 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const bundledFfmpeg=require('ffmpeg-static');
+const {createBookQueue}=require('./book-transcription.cjs');
 const bundledFfmpegPath=appPath=>appPath&&appPath.includes('app.asar')?appPath.replace('app.asar','app.asar.unpacked'):appPath;
 function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath},dependencies={}){
  const spawn=dependencies.spawn||require('node:child_process').spawn;
  const fetch=dependencies.fetch||globalThis.fetch;
  const base=path.join(app.getPath('userData'),'ai-transcripts');
  let job=null;
+ let bookQueue=null;
  const endpoint='http://127.0.0.1:3030';
  const configPath=path.join(app.getPath('userData'),'vibe-config.json');
  let server=null;
@@ -86,7 +88,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath},depen
  const status=()=>lastStatus;
  ipcMain.handle('ai-transcript-status',status);
  function stop(){if(job){job.cancelled=true;job.child?.kill();job.controller?.abort();}}
- ipcMain.handle('ai-transcript-cancel',()=>{request++;pending=null;auto=null;stop();emit({state:'cancelled',message:'Transcription stopped'});return true;});
+ ipcMain.handle('ai-transcript-cancel',async()=>{request++;pending=null;auto=null;stop();if(bookQueue?.isActive())await bookQueue.cancel();emit({state:'cancelled',message:'Transcription stopped'});return true;});
  const optionsFor=async()=> {
   await ensureModel();
   return {ffmpeg:dependencies.ffmpeg||bundledFfmpegPath(bundledFfmpeg)||'ffmpeg'};
@@ -175,6 +177,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath},depen
   }catch(e){if(auto===session){auto=null;emit({state:'error',message:e.message});}}
  }
  ipcMain.handle('ai-auto-start',async(_,id,track,position,options={})=>{
+  if(bookQueue?.isActive())throw Error('Pause the whole-book queue before enabling automatic listening');
   resolve(id,track);const token=++request;pending=token;auto=null;stop();
   emit({state:'running',id,track,percent:0,message:'Preparing Vibe...'});
   let opts;
@@ -195,7 +198,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath},depen
   return true;
  });
  ipcMain.handle('ai-transcript-start',async(_,id,track,options={})=>{
-  resolve(id,track);if(job||auto||pending!==null)throw Error('Another transcription is running');
+  resolve(id,track);if(job||auto||pending!==null||bookQueue?.isActive())throw Error('Another transcription is running');
   const token=++request;pending=token;
   emit({state:'running',id,track,percent:0,message:'Preparing Vibe...'});
   try{
@@ -208,5 +211,12 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath},depen
   }catch(e){if(token===request)emit({state:'error',id,track,message:e.message});throw e;}
   finally{if(pending===token)pending=null;}
  });
+ bookQueue=createBookQueue({app,ipcMain,getBooks,read,prepare:optionsFor,
+  isBusy:()=>!!job,canStart:()=>!auto&&pending===null,
+  cancelWorker:stop,
+  run:async(id,track,chunk)=>({ok:await runChunk(id,track,chunk,{ffmpeg:dependencies.ffmpeg||bundledFfmpegPath(bundledFfmpeg)||'ffmpeg'}),message:lastStatus.message}),
+  emit:s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-book-status',s);}
+ });
+ app.on('before-quit',()=>{void bookQueue.pause().catch(console.error);});
 }
 module.exports={createTranscription};
