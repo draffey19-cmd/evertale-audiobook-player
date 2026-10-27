@@ -162,4 +162,12 @@ audio.addEventListener('play',()=>syncAiPosition(true));
 function renderAi(s){if(!s)return;$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.sectionSaved||s.state==='completed')showAiResults();}
 window.hearth.onAiStatus(renderAi);window.hearth.aiStatus().then(renderAi).catch(console.error);
 
+window.hearth.aiVibeConfig().then(c=>{$('vibe-binary').value=c.binary||'';$('vibe-model').value=c.model||'';}).catch(console.error);
+for(const kind of ['binary','model']){
+ $('vibe-browse-'+kind).onclick=async()=>{
+  try{const file=await window.hearth.aiVibeBrowse(kind);if(!file)return;const changes={[kind]:file};await window.hearth.aiVibeConfig(changes);$('vibe-'+kind).value=file;}
+  catch(e){$('ai-engine-status').textContent=e.message;}
+ };
+}
+$('vibe-test').onclick=async()=>{$('vibe-test').disabled=true;$('ai-engine-status').textContent='Starting Vibe and loading model…';try{await window.hearth.aiVibeReady();$('ai-engine-status').textContent='Vibe ready for transcription';}catch(e){$('ai-engine-status').textContent=e.message;}finally{$('vibe-test').disabled=false;}};
 window.hearth.aiEngineStatus().then(s=>{$('ai-engine-status').textContent=!s.installed?'Vibe server not detected at 127.0.0.1:3030':s.ready?'Vibe server ready with model loaded':'Vibe server detected; load a speech model';}).catch(e=>{$('ai-engine-status').textContent=e.message;});
