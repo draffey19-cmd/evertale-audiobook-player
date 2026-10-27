@@ -84,7 +84,7 @@ function createBookQueue({app,ipcMain,getBooks,read,prepare,run,isBusy,canStart,
   if(state.id){state.state='cancelled';state.message='Queue cancelled. Saved sections are kept for resume.';if(ownsWorker)cancelWorker();await checkpoint();}
   return {...state};
  }
- ipcMain.handle('ai-book-status',async()=>{await recovery;return {...state};});
+ ipcMain.handle('ai-book-status',async()=>{await recovery;await writes;return {...state};});
  ipcMain.handle('ai-book-start',(_,id)=>start(id));
  ipcMain.handle('ai-book-pause',pause);
  ipcMain.handle('ai-book-cancel',cancel);

@@ -15,6 +15,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath},depen
  let server=null;
  let starting=null;
  let loading=null;
+ let loadedSettings=null;
  let request=0,pending=null,lastStatus={state:'idle'},quitting=false;
  const config=async()=>{try{return JSON.parse(await fs.readFile(configPath,'utf8'));}catch{return {};}};
  const probe=async()=>{try{const r=await fetch(endpoint+'/v1/models',{signal:AbortSignal.timeout(1500)});if(!r.ok)return null;const data=await r.json();return Array.isArray(data?.data)?data:null;}catch{return null;}};
@@ -49,25 +50,39 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath},depen
  }
  async function loadModel(){
   const state=await ensureServer();
-  const {model}=await config();
-  if(state.data.length&&(!model||state.data.some(m=>m.id===path.basename(model))))return state;
+  const {model,noGpu=false,gpuDevice=-1}=await config();
+  const signature=JSON.stringify({model,noGpu,gpuDevice});
+  if(state.data.length&&(!model||state.data.some(m=>m.id===path.basename(model)))&&(loadedSettings===signature||loadedSettings===null&&!noGpu&&gpuDevice===-1))return state;
   if(!model)throw Error('Choose a downloaded speech model in EverTale first.');
   await fs.access(model);
-  const response=await fetch(endpoint+'/v1/models/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:model,gpu_device:-1,no_gpu:false}),signal:AbortSignal.timeout(120000)});
+  const response=await fetch(endpoint+'/v1/models/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:model,gpu_device:gpuDevice,no_gpu:noGpu}),signal:AbortSignal.timeout(120000)});
   if(!response.ok)throw Error('Vibe model loading failed: '+(await response.text()).slice(0,400));
   const ready=await probe();
   if(!ready?.data?.length)throw Error('Vibe did not report a loaded model after setup.');
+  loadedSettings=signature;
   return ready;
  }
  ipcMain.handle('ai-vibe-config',async(_,changes)=>{
   if(changes){
+   if(job||pending!==null||bookQueue?.isActive()||loading)throw Error('Pause or stop transcription and wait for the current section before changing Vibe settings');
    const old=await config(),next={...old};
-   for(const field of ['binary','model'])if(typeof changes[field]==='string')next[field]=changes[field];
+   for(const field of ['binary','model','fallbackModel'])if(typeof changes[field]==='string')next[field]=changes[field];
+   if(typeof changes.noGpu==='boolean')next.noGpu=changes.noGpu;
+   if(Number.isInteger(changes.gpuDevice)&&changes.gpuDevice>=-1&&changes.gpuDevice<=31)next.gpuDevice=changes.gpuDevice;
    await fs.writeFile(configPath,JSON.stringify(next,null,2));
   }
   return config();
  });
  ipcMain.handle('ai-vibe-ready',async()=>{await ensureModel();return {ready:true};});
+ ipcMain.handle('ai-vibe-devices',async()=>{
+  const {binary}=await config();if(!binary)throw Error('Choose a Vibe executable first');
+  return new Promise((resolve,reject)=>{
+   const child=spawn(binary,['devices'],{windowsHide:true}),timer=setTimeout(()=>{child.kill();reject(Error('Device detection timed out'));},10000);
+   let output='';child.stdout?.on('data',d=>{output=(output+d).slice(-32000);});child.stderr?.on('data',()=>{});
+   child.on('error',e=>{clearTimeout(timer);reject(e);});
+   child.on('close',code=>{clearTimeout(timer);try{if(code!==0)throw Error('Vibe device detection failed');const devices=JSON.parse(output);if(!Array.isArray(devices))throw Error('Invalid device response');resolve(devices);}catch(e){reject(e);}});
+  });
+ });
  app.on('before-quit',()=>{quitting=true;request++;pending=null;auto=null;stop();if(server){server.kill();server=null;}});
 
  ipcMain.handle('ai-engine-status',async()=>{

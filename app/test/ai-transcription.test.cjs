@@ -189,3 +189,12 @@ test('whole-book queue shares worker ownership and preserves automatic-listening
  assert.deepEqual((await h.call('ai-transcript-get','book',1)).completedChunks,[0]);
  assert.equal(h.requests,4);
 });
+
+test('CPU and explicit GPU selection reload the model and preserve the tiny fallback path',async t=>{
+ const bodies=[];const h=await harness(t,{load:async options=>{bodies.push(JSON.parse(options.body));}});
+ const current=await h.call('ai-vibe-config');
+ await h.call('ai-vibe-config',{noGpu:true,gpuDevice:-1,fallbackModel:current.model});await h.call('ai-vibe-ready');
+ await h.call('ai-vibe-config',{noGpu:false,gpuDevice:1});await h.call('ai-vibe-ready');
+ assert.equal(bodies[0].no_gpu,true);assert.equal(bodies[1].gpu_device,1);assert.equal(bodies[1].no_gpu,false);
+ assert.equal((await h.call('ai-vibe-config')).fallbackModel,current.model);
+});

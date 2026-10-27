@@ -207,3 +207,16 @@ $('ai-book-resume').onclick=()=>queueAction(()=>window.hearth.aiBookResume());
 $('ai-book-cancel').onclick=()=>queueAction(()=>window.hearth.aiBookCancel());
 window.hearth.onAiBookStatus(renderBookQueue);
 window.hearth.aiBookStatus().then(renderBookQueue).catch(e=>{$('ai-book-status').textContent=e.message;});
+
+
+function showVibePreferences(c){
+ const value=c.noGpu?'cpu':Number.isInteger(c.gpuDevice)&&c.gpuDevice>=0?String(c.gpuDevice):'auto';
+ if(!Array.from($('vibe-compute').options).some(o=>o.value===value)){const o=document.createElement('option');o.value=value;o.textContent='Vulkan device '+value+' (saved)';$('vibe-compute').append(o);}
+ $('vibe-compute').value=value;$('vibe-fallback-status').textContent=c.fallbackModel?'Fallback: '+c.fallbackModel:'No fallback selected. Keep your working tiny model here before trying another.';
+}
+window.hearth.aiVibeConfig().then(showVibePreferences).catch(console.error);
+$('vibe-guide').onchange=()=>{$('vibe-guide-text').textContent={tiny:'About 75 MiB on disk. Fastest option; keep tiny.en for English as a fallback.',base:'About 142 MiB on disk. A sensible next comparison for English narration. Speed and accuracy must be measured on your audio.',small:'About 466 MiB on disk. A candidate for 4 GB VRAM; more compute than base. Compare playback responsiveness before long jobs.'}[$('vibe-guide').value];};
+$('vibe-compute').onchange=async()=>{try{const value=$('vibe-compute').value;const c=await window.hearth.aiVibeConfig({noGpu:value==='cpu',gpuDevice:['cpu','auto'].includes(value)?-1:Number(value)});showVibePreferences(c);$('ai-engine-status').textContent='Compute preference saved. Start / test to apply; acceleration remains unverified.';}catch(e){$('ai-engine-status').textContent=e.message;showVibePreferences(await window.hearth.aiVibeConfig());}};
+$('vibe-devices').onclick=async()=>{try{const devices=await window.hearth.aiVibeDevices();$('vibe-compute').replaceChildren();for(const [value,label] of [['auto','Automatic backend'],['cpu','CPU only'],...devices.map(d=>[String(d.index),d.description+' (Vulkan '+d.index+')'])]){const o=document.createElement('option');o.value=value;o.textContent=label;$('vibe-compute').append(o);}showVibePreferences(await window.hearth.aiVibeConfig());}catch(e){$('ai-engine-status').textContent=e.message;}};
+$('vibe-keep-fallback').onclick=async()=>{try{const c=await window.hearth.aiVibeConfig();if(!c.model)throw Error('Select your working tiny model first');showVibePreferences(await window.hearth.aiVibeConfig({fallbackModel:c.model}));}catch(e){$('ai-engine-status').textContent=e.message;}};
+$('vibe-use-fallback').onclick=async()=>{try{const c=await window.hearth.aiVibeConfig();if(!c.fallbackModel)throw Error('No fallback model saved');const next=await window.hearth.aiVibeConfig({model:c.fallbackModel});$('vibe-model').value=next.model;showVibePreferences(next);$('ai-engine-status').textContent='Fallback selected. Start / test to load it.';}catch(e){$('ai-engine-status').textContent=e.message;}};
