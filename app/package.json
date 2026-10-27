@@ -1,6 +1,6 @@
 {
   "name": "evertale-audiobook-player",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "EverTale Audiobook Player for Windows",
   "main": "main.cjs",
   "scripts": {
@@ -48,7 +48,8 @@
       {
         "provider": "github",
         "owner": "draffey19-cmd",
-        "repo": "evertale-audiobook-player"
+        "repo": "evertale-audiobook-player",
+        "releaseType": "release"
       }
     ]
   }
