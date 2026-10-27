@@ -144,3 +144,10 @@ $('ai-start').onclick=async()=>{
 $('ai-cancel').onclick=()=>window.hearth.aiCancel();
 function renderAi(s){if(!s)return;$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.state==='completed')showAiResults();}
 window.hearth.onAiStatus(renderAi);window.hearth.aiStatus().then(renderAi).catch(console.error);
+
+$('ai-browse-binary').onclick=async()=>{const p=await window.hearth.aiBrowse('binary');if(p)$('ai-binary').value=p;};
+$('ai-browse-ffmpeg').onclick=async()=>{const p=await window.hearth.aiBrowse('ffmpeg');if(p)$('ai-ffmpeg').value=p;};
+window.hearth.aiModelPath().then(s=>{if(s.installed){$('ai-model').value=s.path;$('ai-model-status').textContent='Local model ready';}}).catch(console.error);
+$('ai-download-model').onclick=async()=>{try{const s=await window.hearth.aiModelDownload();$('ai-model').value=s.path;}catch(e){$('ai-model-status').textContent=e.message;}};
+$('ai-cancel-model').onclick=()=>window.hearth.aiModelCancel();
+window.hearth.onAiModelStatus(s=>{$('ai-model-status').textContent=s.message+(s.percent?' ('+s.percent+'%)':'');$('ai-download-model').disabled=s.state==='downloading';$('ai-cancel-model').hidden=s.state!=='downloading';});
