@@ -40,98 +40,120 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  });
  ipcMain.handle('ai-model-cancel',()=>{if(!modelDownload)return false;modelDownload.cancel();return true;});
 
+ const CHUNK=90;
  const emit=s=>{const w=getWindow();if(w&&!w.isDestroyed())w.webContents.send('ai-transcription-status',s);};
  const key=(id,track)=>crypto.createHash('sha256').update(id+':'+track).digest('hex').slice(0,32);
  const file=(id,track)=>path.join(base,key(id,track)+'.json');
  const read=async(id,track)=>{try{return JSON.parse(await fs.readFile(file(id,track),'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}};
  const resolve=(id,track)=>{const b=getBooks().find(x=>x.id===id);if(!b)throw Error('Audiobook not found');if(!Number.isInteger(track)||track<0||track>=b.tracks.length)throw Error('Invalid track');const source=getTrackPath(b.tracks[track].key);if(!source)throw Error('Audio file unavailable');return {b,source};};
- const CHUNK=30;
- const chunkIndex=time=>Math.max(0,Math.floor(Math.max(0,Number(time)||0)/CHUNK));
- const covered=(data,index)=>Array.isArray(data?.completedChunks)&&data.completedChunks.includes(index);
+ const save=async(id,track,data)=>{await fs.mkdir(base,{recursive:true});const dest=file(id,track),tmp=dest+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(tmp,JSON.stringify(data));await fs.rename(tmp,dest);};
  ipcMain.handle('ai-transcript-get',async(_,id,track)=>{resolve(id,track);return read(id,track);});
  ipcMain.handle('ai-transcript-search',async(_,id,query)=>{const b=getBooks().find(x=>x.id===id);if(!b)throw Error('Audiobook not found');const q=String(query||'').trim().toLowerCase();if(!q)return [];const found=[];for(let i=0;i<b.tracks.length;i++){const data=await read(id,i);for(const s of data?.segments||[]){if(s.text.toLowerCase().includes(q))found.push({track:i,start:s.start,end:s.end,text:s.text});if(found.length>=100)return found;}}return found;});
- ipcMain.handle('ai-transcript-status',()=>job?.status||{state:'idle'});
- const stop=()=>{if(!job)return false;job.cancelled=true;job.status={...job.status,state:'cancelling',message:'Stopping background transcription…'};emit(job.status);job.child?.kill();return true;};
- ipcMain.handle('ai-transcript-cancel',stop);
- ipcMain.handle('ai-transcript-position',(_,id,track,time,playing)=>{
-  if(!job||job.id!==id||job.cancelled)return false;
+ let job=null;
+ let auto=null;
+ const status=()=>job?.status||{state:'idle'};
+ ipcMain.handle('ai-transcript-status',status);
+ function stop(){if(job){job.cancelled=true;job.child?.kill();}job=null;}
+ ipcMain.handle('ai-transcript-cancel',()=>{auto=null;stop();emit({state:'cancelled',message:'Transcription stopped'});return true;});
+ const optionsFor=async(options={})=>{
+  const binary=String(options.binary||bundledWhisper).trim();
+  const model=String(options.model||modelPath).trim();
+  const ffmpeg=String(options.ffmpeg||bundledFfmpegPath(bundledFfmpeg)||'ffmpeg').trim();
+  for(const p of [binary,model]){if(!path.isAbsolute(p))throw Error('Select a valid local Whisper executable and model');await fs.access(p);}
+  return {binary,model,ffmpeg,gpu:options.gpu!==false};
+ };
+ function processChild(task,command,args){
+  return new Promise((resolve,reject)=>{
+   let stderr='';const child=spawn(command,args,{windowsHide:true});task.child=child;
+   child.stderr?.on('data',d=>{stderr=(stderr+d).slice(-1800);});
+   child.on('error',reject);
+   child.on('close',code=>{if(task.cancelled)return reject(Error('Cancelled'));code===0?resolve():reject(Error('Process exited '+code+': '+stderr));});
+  });
+ }
+ async function transcribeChunk(task,id,track,chunk,opts){
+  const {source}=resolve(id,track);
+  const start=chunk*CHUNK;
+  const output=path.join(base,'job-'+crypto.randomUUID());
+  const wav=output+'.wav';
+  try{
+   task.status={state:'running',id,track,percent:0,message:'Preparing audio '+Math.floor(start/60)+'m–'+Math.floor((start+CHUNK)/60)+'m…'};emit(task.status);
+   await processChild(task,opts.ffmpeg,['-nostdin','-y','-ss',String(start),'-i',source,'-t',String(CHUNK),'-ar','16000','-ac','1','-c:a','pcm_s16le',wav]);
+   if(task.cancelled)throw Error('Cancelled');
+   task.status={...task.status,percent:35,message:'Transcribing '+Math.floor(start/60)+'m–'+Math.floor((start+CHUNK)/60)+'m…'};emit(task.status);
+   const args=['-m',opts.model,'-f',wav,'-oj','-of',output,'-np'];
+   if(!opts.gpu)args.push('-ng');
+   try{await processChild(task,opts.binary,args);}catch(e){if(task.cancelled)throw e;if(!opts.gpu)throw e;await processChild(task,opts.binary,[...args,'-ng']);}
+   if(task.cancelled)throw Error('Cancelled');
+   const raw=JSON.parse(await fs.readFile(output+'.json','utf8'));
+   const segments=(raw.transcription||[]).map(s=>({start:start+Number(s.offsets?.from||0)/1000,end:start+Number(s.offsets?.to||0)/1000,text:String(s.text||'').trim()})).filter(s=>s.text);
+   const previous=await read(id,track)||{id,track,createdAt:new Date().toISOString(),segments:[],completedChunks:[]};
+   const completed=new Set(previous.completedChunks||[]);
+   if(!completed.has(chunk)){
+    previous.segments=[...previous.segments,...segments].sort((a,b)=>a.start-b.start);
+    completed.add(chunk);previous.completedChunks=[...completed].sort((a,b)=>a-b);
+    await save(id,track,previous);
+   }
+   task.status={state:'completed',id,track,chunk,percent:100,message:'Saved transcript section at '+Math.floor(start/60)+'m',segments:segments.length};emit(task.status);
+  }finally{await Promise.all([fs.rm(wav,{force:true}),fs.rm(output+'.json',{force:true})]).catch(()=>{});}
+ }
+ async function runChunk(id,track,chunk,opts){
+  if(job)return false;
+  await fs.mkdir(base,{recursive:true});
+  const task={cancelled:false,child:null,status:{state:'running',id,track,percent:0,message:'Preparing transcription…'}};
+  job=task;emit(task.status);
+  try{await transcribeChunk(task,id,track,chunk,opts);}
+  catch(e){if(!task.cancelled){task.status={state:'error',id,track,message:e.message};emit(task.status);if(auto)auto=null;}}
+  finally{if(job===task)job=null;}
+  return !task.cancelled&&task.status.state==='completed';
+ }
+ async function nextChunk(id,track,position){
+  const {b}=resolve(id,track);
+  const length=Number(b.tracks[track].duration)||0;
+  const max=length>0?Math.ceil(length/CHUNK):1;
+  const data=await read(id,track);
+  const completed=new Set(data?.completedChunks||[]);
+  const focus=Math.min(max-1,Math.max(0,Math.floor(position/CHUNK)));
+  // Current section first, then nearby sections, then the rest of the track.
+  for(let distance=0;distance<max;distance++){
+   const forward=focus+distance,backward=focus-distance;
+   if(forward<max&&!completed.has(forward))return forward;
+   if(backward>=0&&!completed.has(backward))return backward;
+  }
+  return null;
+ }
+ async function pump(){
+  if(!auto||job)return;
+  const session=auto;
+  try{
+   const chunk=await nextChunk(session.id,session.track,session.position);
+   if(auto!==session)return;
+   if(chunk===null){emit({state:'completed',id:session.id,track:session.track,percent:100,message:'All sections of this track transcribed'});auto=null;return;}
+   const ok=await runChunk(session.id,session.track,chunk,session.opts);
+   if(auto===session&&ok)setImmediate(pump);
+  }catch(e){if(auto===session){auto=null;emit({state:'error',message:e.message});}}
+ }
+ ipcMain.handle('ai-auto-start',async(_,id,track,position,options={})=>{
+  resolve(id,track);const opts=await optionsFor(options);
+  auto={id,track,position:Math.max(0,Number(position)||0),opts};
+  if(job){job.cancelled=true;job.child?.kill();}else setImmediate(pump);
+  return {state:'running',message:'Automatic background transcription enabled'};
+ });
+ ipcMain.handle('ai-auto-position',(_,id,track,position)=>{
+  if(!auto||auto.id!==id)return false;
   resolve(id,track);
-  job.track=track;job.position=chunkIndex(time);job.playing=Boolean(playing);
-  // Interrupt a distant chunk so that the new listening position takes priority.
-  if(job.activeTrack!==undefined&&(job.activeTrack!==track||Math.abs(job.activeIndex-job.position)>2)){job.interrupted=true;job.child?.kill();}
+  const changed=auto.track!==track||Math.abs(auto.position-(Number(position)||0))>=CHUNK*2;
+  auto.track=track;auto.position=Math.max(0,Number(position)||0);
+  if(changed&&job&&(job.status.track!==track||Math.abs((job.status.chunk||0)*CHUNK-auto.position)>=CHUNK*3)){job.cancelled=true;job.child?.kill();}
+  if(!job)setImmediate(pump);
   return true;
  });
  ipcMain.handle('ai-transcript-start',async(_,id,track,options={})=>{
-  if(job)throw Error('Another transcription is running');
-  const {b}=resolve(id,track);
-  const binary=String(options.binary||bundledWhisper).trim();
-  const model=String(options.model||modelPath).trim();
-  if(!path.isAbsolute(binary)||!path.isAbsolute(model))throw Error('Select valid local Whisper executable and model paths');
-  await Promise.all([fs.access(binary),fs.access(model)]);
-  const ffmpeg=String(options.ffmpeg||bundledFfmpegPath(bundledFfmpeg)||'ffmpeg').trim();
-  const task={id,track,position:chunkIndex(options.time),playing:true,cancelled:false,interrupted:false,child:null,status:{state:'running',id,track,percent:0,message:'Preparing progressive transcription…'}};
-  job=task;emit(task.status);await fs.mkdir(base,{recursive:true});
-  const execute=(command,args)=>new Promise((resolve,reject)=>{
-   const p=spawn(command,args,{windowsHide:true});task.child=p;let stderr='';
-   p.stderr?.on('data',d=>{stderr=(stderr+d).slice(-3000);});
-   p.on('error',reject);
-   p.on('close',code=>code===0?resolve():reject(Error('Process exited '+code+': '+stderr)));
-  });
-  const processChunk=async(t,index)=>{
-   const {source}=resolve(id,t);
-   const prefix=path.join(base,'job-'+crypto.randomUUID());
-   const wav=prefix+'.wav';
-   task.activeTrack=t;task.activeIndex=index;task.interrupted=false;
-   try{
-    await execute(ffmpeg,['-nostdin','-y','-ss',String(index*CHUNK),'-i',source,'-t',String(CHUNK),'-ar','16000','-ac','1','-c:a','pcm_s16le',wav]);
-    if(task.cancelled||task.interrupted)return;
-    await execute(binary,['-m',model,'-f',wav,'-oj','-of',prefix,'-np','-ng']);
-    if(task.cancelled||task.interrupted)return;
-    const raw=JSON.parse(await fs.readFile(prefix+'.json','utf8'));
-    const segments=(raw.transcription||[]).map(x=>({start:index*CHUNK+Number(x.offsets?.from||0)/1000,end:index*CHUNK+Number(x.offsets?.to||0)/1000,text:String(x.text||'').trim()})).filter(x=>x.text);
-    const previous=await read(id,t)||{id,track:t,createdAt:new Date().toISOString(),completedChunks:[],segments:[]};
-    if(covered(previous,index))return;
-    previous.completedChunks.push(index);
-    previous.segments.push(...segments);
-    previous.segments.sort((a,b)=>a.start-b.start);
-    const dest=file(id,t),temp=dest+'.tmp';
-    await fs.writeFile(temp,JSON.stringify(previous));await fs.rename(temp,dest);
-   }finally{
-    task.child=null;task.activeTrack=undefined;
-    await Promise.all([fs.rm(wav,{force:true}),fs.rm(prefix+'.json',{force:true})]).catch(()=>{});
-   }
-  };
-  (async()=>{try{
-   // Favor the listening position, then nearby chunks, then fill the rest of the book.
-   while(!task.cancelled){
-    const tracks=getBooks().find(x=>x.id===id)?.tracks||b.tracks;
-    const pending=[];
-    for(let t=0;t<tracks.length;t++){
-     const duration=Number(tracks[t].duration)||0;
-     if(duration<=0)continue;
-     const data=await read(id,t);
-     for(let i=0;i<Math.ceil(duration/CHUNK);i++)if(!covered(data,i))pending.push({track:t,index:i});
-    }
-    if(!pending.length){task.status={state:'completed',id,percent:100,message:'All available audiobook tracks transcribed'};emit(task.status);break;}
-    const focus=task.track,position=task.position;
-    pending.sort((a,b)=>{
-     const score=x=>x.track===focus?Math.abs(x.index-position):100000+Math.abs(x.track-focus)*10000+x.index;
-     return score(a)-score(b);
-    });
-    const next=pending[0];
-    const total=pending.length;
-    task.status={state:'running',id,track:next.track,percent:0,message:'Transcribing '+tracks[next.track].name+' at '+Math.floor(next.index*CHUNK/60)+'m '+(next.index*CHUNK%60)+'s ('+total+' sections remaining)'};
-    emit(task.status);
-    try{await processChunk(next.track,next.index);}
-    catch(e){if(task.cancelled)break;if(task.interrupted){task.interrupted=false;continue;}throw e;}
-    if(task.interrupted){task.interrupted=false;continue;}
-    emit({...task.status,message:'Section saved. '+(total-1)+' sections remaining',sectionSaved:true,track:next.track});
-   }
-  }catch(e){task.status={state:task.cancelled?'cancelled':'error',id,message:task.cancelled?'Transcription stopped':e.message};emit(task.status);}
-  finally{if(task.cancelled)emit({state:'cancelled',id,message:'Background transcription stopped'});job=null;}
-  })();
-  return task.status;
+  resolve(id,track);if(job||auto)throw Error('Another transcription is running');
+  const opts=await optionsFor(options);
+  const chunk=await nextChunk(id,track,Math.max(0,Number(options.position)||0));
+  if(chunk===null)return {state:'completed',percent:100,message:'Track already transcribed'};
+  setImmediate(()=>runChunk(id,track,chunk,opts));
+  return {state:'running',id,track,percent:0,message:'Transcribing a 90-second section…'};
  });
-
 }
 module.exports={createTranscription};
