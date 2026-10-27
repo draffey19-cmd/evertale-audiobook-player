@@ -137,6 +137,11 @@ app.whenReady().then(async()=>{
   createWindow();
   initializeUpdater({app,ipcMain,getWindow:()=>win,enabled:!devMode});
   createTranscription({app,ipcMain,getWindow:()=>win,getBooks:()=>books,getTrackPath:key=>tracks.get(key)});
+  ipcMain.handle('ai-vibe-browse',async(_,kind)=>{
+   if(!['binary','model'].includes(kind))throw Error('Invalid Vibe selection');
+   const r=await dialog.showOpenDialog(win,{properties:['openFile'],filters:kind==='binary'?[{name:'Vibe server',extensions:['exe']}]:[{name:'Speech models',extensions:['bin','gguf']}]});
+   return r.canceled?null:r.filePaths[0];
+  });
   scan().then(()=>win?.webContents.send('library-changed')).catch(console.error);
   setInterval(()=>{if(store.settings.autoScan!==false)scan().then(()=>win?.webContents.send('library-changed')).catch(console.error);},300000);
 });
