@@ -24,7 +24,7 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
  let auto=null;
  const status=()=>job?.status||{state:'idle'};
  ipcMain.handle('ai-transcript-status',status);
- function stop(){if(job){job.cancelled=true;job.child?.kill();job.controller?.abort();job.controller?.abort();job.controller?.abort();}job=null;}
+ function stop(){if(job){job.cancelled=true;job.child?.kill();job.controller?.abort();}job=null;}
  ipcMain.handle('ai-transcript-cancel',()=>{auto=null;stop();emit({state:'cancelled',message:'Transcription stopped'});return true;});
  const optionsFor=async()=> {
   const response=await fetch(endpoint+'/v1/models',{signal:AbortSignal.timeout(3000)}).catch(()=>null);
@@ -51,12 +51,15 @@ function createTranscription({app,ipcMain,getWindow,getBooks,getTrackPath}){
    await processChild(task,opts.ffmpeg,['-nostdin','-y','-ss',String(start),'-i',source,'-t',String(CHUNK),'-ar','16000','-ac','1','-c:a','pcm_s16le',wav]);
    if(task.cancelled)throw Error('Cancelled');
    task.status={...task.status,percent:35,message:'Transcribing '+Math.floor(start/60)+'m–'+Math.floor((start+CHUNK)/60)+'m…'};emit(task.status);
-   const args=['-m',opts.model,'-f',wav,'-oj','-of',output,'-np'];
-   if(!opts.gpu)args.push('-ng');
-   try{await processChild(task,opts.binary,args);}catch(e){if(task.cancelled)throw e;if(!opts.canFallback)throw e;task.status={...task.status,message:'GPU engine failed; retrying with bundled CPU engine…'};emit(task.status);await processChild(task,opts.cpuBinary,[...args,'-ng']);}
+   const form=new FormData();
+   form.append('file',new Blob([await fs.readFile(wav)],{type:'audio/wav'}),'section.wav');
+   form.append('response_format','verbose_json');
+   const controller=new AbortController();task.controller=controller;
+   const response=await fetch(endpoint+'/v1/audio/transcriptions',{method:'POST',body:form,signal:controller.signal});
+   if(!response.ok)throw Error('Vibe transcription failed: HTTP '+response.status+' '+(await response.text()).slice(0,300));
    if(task.cancelled)throw Error('Cancelled');
-   const raw=JSON.parse(await fs.readFile(output+'.json','utf8'));
-   const segments=(raw.transcription||[]).map(s=>({start:start+Number(s.offsets?.from||0)/1000,end:start+Number(s.offsets?.to||0)/1000,text:String(s.text||'').trim()})).filter(s=>s.text);
+   const raw=await response.json();
+   const segments=(raw.segments||[]).map(s=>({start:start+Number(s.start||0),end:start+Number(s.end||0),text:String(s.text||'').trim()})).filter(s=>s.text);
    const previous=await read(id,track)||{id,track,createdAt:new Date().toISOString(),segments:[],completedChunks:[]};
    const completed=new Set(previous.completedChunks||[]);
    if(!completed.has(chunk)){
