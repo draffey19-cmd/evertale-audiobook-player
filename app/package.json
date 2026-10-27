@@ -56,6 +56,15 @@
     ],
     "asarUnpack": [
       "node_modules/ffmpeg-static/**"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "ai-bin",
+        "filter": [
+          "**/*"
+        ]
+      }
     ]
   }
 }
