@@ -2,11 +2,6 @@ const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('hearth',{
   library:()=>ipcRenderer.invoke('get-library'),
   aiEngineStatus:()=>ipcRenderer.invoke('ai-engine-status'),
-  aiModelPath:()=>ipcRenderer.invoke('ai-model-path'),
-  aiModelDownload:()=>ipcRenderer.invoke('ai-model-download'),
-  aiModelCancel:()=>ipcRenderer.invoke('ai-model-cancel'),
-  aiBrowse:kind=>ipcRenderer.invoke('ai-browse',kind),
-  onAiModelStatus:fn=>ipcRenderer.on('ai-model-status',(_event,data)=>fn(data)),
   aiStart:(id,track,options)=>ipcRenderer.invoke('ai-transcript-start',id,track,options),
   aiPosition:(id,track,time,playing)=>ipcRenderer.invoke('ai-transcript-position',id,track,time,playing),
   aiAutoStart:(id,track,position,options)=>ipcRenderer.invoke('ai-auto-start',id,track,position,options),
