@@ -126,3 +126,21 @@ updatePlay();
  window.hearth.onUpdateStatus(s=>{status=s;render(s)});
  btn.addEventListener('click',async()=>{if(status.state==='available')status=await window.hearth.downloadUpdate();else if(status.state==='downloaded'){if(confirm('Restart EverTale and install the downloaded update?'))await window.hearth.installUpdate();return;}else status=await window.hearth.checkUpdates();render(status);});
 })();
+
+let aiSearchTimer=null;
+async function showAiResults(){
+ const b=selected;if(!b)return;const q=$('ai-search').value.trim();$('ai-results').replaceChildren();if(!q)return;
+ try{const hits=await window.hearth.aiSearch(b.id,q);if(selected?.id!==b.id)return;
+ if(!hits.length){$('ai-results').textContent='No matches in saved transcripts.';return;}
+ for(const hit of hits)$('ai-results').append(button(duration(hit.start)+' · '+hit.text,()=>playBook(b,hit.track,hit.start),'chapter'));
+ }catch(e){$('ai-results').textContent=e.message;}
+}
+$('ai-search').addEventListener('input',()=>{clearTimeout(aiSearchTimer);aiSearchTimer=setTimeout(showAiResults,250)});
+$('ai-start').onclick=async()=>{
+ if(!selected)return;const id=selected.id,track=active?.id===id?trackIndex:selected.progress.track||0;
+ const options={binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim()||'ffmpeg',gpu:$('ai-gpu').checked};
+ try{renderAi(await window.hearth.aiStart(id,track,options));}catch(e){$('ai-status').textContent=e.message;}
+};
+$('ai-cancel').onclick=()=>window.hearth.aiCancel();
+function renderAi(s){if(!s)return;$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.state==='completed')showAiResults();}
+window.hearth.onAiStatus(renderAi);window.hearth.aiStatus().then(renderAi).catch(console.error);
