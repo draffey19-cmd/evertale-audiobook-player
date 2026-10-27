@@ -128,23 +128,6 @@ updatePlay();
 })();
 
 let aiSearchTimer=null;
-let aiAutoBusy=false;
-async function syncAiListening(){
- if(!$('ai-auto').checked||!active)return;
- const id=active.id,track=trackIndex,time=audio.currentTime||0;
- try{
-  const status=await window.hearth.aiStatus();
-  if(status.state==='running'||status.state==='cancelling'){await window.hearth.aiPosition(id,track,time,!audio.paused);return;}
-  if(aiAutoBusy||audio.paused)return;
-  aiAutoBusy=true;
-  const options={binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim(),gpu:false,time};
-  await window.hearth.aiStart(id,track,options);
- }catch(e){$('ai-status').textContent='Auto transcription: '+e.message;}
- finally{aiAutoBusy=false;}
-}
-setInterval(()=>{if(active&&$('ai-auto').checked)syncAiListening();},5000);
-$('ai-auto').addEventListener('change',()=>{if($('ai-auto').checked)syncAiListening();else window.hearth.aiCancel();});
-
 async function showAiResults(){
  const b=selected;if(!b)return;const q=$('ai-search').value.trim();$('ai-results').replaceChildren();if(!q)return;
  try{const hits=await window.hearth.aiSearch(b.id,q);if(selected?.id!==b.id)return;
@@ -160,7 +143,7 @@ $('ai-start').onclick=async()=>{
 };
 $('ai-cancel').onclick=async()=>{await window.hearth.aiCancel();$('ai-auto').checked=false;};
 let aiPositionSent=0;
-function aiOptions(){return {binary:$('ai-binary').value.trim(),model:$('ai-model').value.trim(),ffmpeg:$('ai-ffmpeg').value.trim(),gpu:$('ai-gpu').checked};}
+function aiOptions(){return {};}
 async function syncAiPosition(force=false){
  if(!$('ai-auto').checked||!active||audio.paused)return;
  if(!force&&Date.now()-aiPositionSent<5000)return;
@@ -179,11 +162,4 @@ audio.addEventListener('play',()=>syncAiPosition(true));
 function renderAi(s){if(!s)return;$('ai-status').textContent=s.message||s.state;$('ai-progress').value=s.percent||0;$('ai-start').disabled=['running','cancelling'].includes(s.state);$('ai-cancel').disabled=!['running','cancelling'].includes(s.state);if(s.sectionSaved||s.state==='completed')showAiResults();}
 window.hearth.onAiStatus(renderAi);window.hearth.aiStatus().then(renderAi).catch(console.error);
 
-$('ai-browse-binary').onclick=async()=>{const p=await window.hearth.aiBrowse('binary');if(p)$('ai-binary').value=p;};
-$('ai-browse-ffmpeg').onclick=async()=>{const p=await window.hearth.aiBrowse('ffmpeg');if(p)$('ai-ffmpeg').value=p;};
-window.hearth.aiModelPath().then(s=>{if(s.installed){$('ai-model').value=s.path;$('ai-model-status').textContent='Local model ready';}}).catch(console.error);
-$('ai-download-model').onclick=async()=>{try{const s=await window.hearth.aiModelDownload();$('ai-model').value=s.path;}catch(e){$('ai-model-status').textContent=e.message;}};
-$('ai-cancel-model').onclick=()=>window.hearth.aiModelCancel();
-window.hearth.onAiModelStatus(s=>{$('ai-model-status').textContent=s.message+(s.percent?' ('+s.percent+'%)':'');$('ai-download-model').disabled=s.state==='downloading';$('ai-cancel-model').hidden=s.state!=='downloading';});
-
-window.hearth.aiEngineStatus().then(s=>{$('ai-engine-status').textContent=s.installed?(s.gpuInstalled?'GPU Whisper ready (CPU fallback included)':'CPU Whisper ready · GPU engine not installed yet'):'Whisper engine not included in this build';}).catch(e=>{$('ai-engine-status').textContent=e.message;});
+window.hearth.aiEngineStatus().then(s=>{$('ai-engine-status').textContent=!s.installed?'Vibe server not detected at 127.0.0.1:3030':s.ready?'Vibe server ready with model loaded':'Vibe server detected; load a speech model';}).catch(e=>{$('ai-engine-status').textContent=e.message;});
