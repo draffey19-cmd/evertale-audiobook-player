@@ -18,14 +18,50 @@ async function fixture(t){
  assert.equal(spawnSync('git.exe',['init','-b','feature/local-ai-transcription-beta',dir],{windowsHide:true}).status,0);
  t.after(()=>fs.rm(dir,{recursive:true,force:true}));return dir;
 }
-function run(dir,extra='',environment={}){
+function run(dir,extra='',environment={},administrator=false){
+ // GitHub's Windows host is elevated. Only mock its identity query in this child
+ // process; keep the copied runner and its guard unchanged. Every job/CLI is a
+ // synthetic fixture. null exercises the real host query instead.
+ const host=administrator===null?'':`
+ function New-Object {
+  param([string]$TypeName,[object[]]$ArgumentList)
+  if($TypeName -eq 'Security.Principal.WindowsPrincipal'){
+   $principal=[pscustomobject]@{}
+   $principal | Add-Member -MemberType ScriptMethod -Name IsInRole -Value {param($role) return ${administrator?'$true':'$false'}}
+   return $principal
+  }
+  Microsoft.PowerShell.Utility\\New-Object @PSBoundParameters
+ }
+ `;
  // Invoke the trusted script as a command block; no execution-policy or sandbox changes.
- const code=`& ([scriptblock]::Create([IO.File]::ReadAllText($env:EVERTALE_TEST_RUNNER))) -Workspace $env:EVERTALE_TEST_WORKSPACE ${extra}`;
+ const code=host+`& ([scriptblock]::Create([IO.File]::ReadAllText($env:EVERTALE_TEST_RUNNER))) -Workspace $env:EVERTALE_TEST_WORKSPACE ${extra}`;
  const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-Command',code],{windowsHide:true,env:{...process.env,...environment,EVERTALE_TEST_RUNNER:path.join(dir,'automation/Run-Overnight.ps1'),EVERTALE_TEST_WORKSPACE:dir}});
  let output='';child.stdout.on('data',d=>{output+=d;});child.stderr.on('data',d=>{output+=d;});
  return {child,result:new Promise(resolve=>child.on('close',code=>resolve({code,output})))};
 }
 async function until(fn){const end=Date.now()+8000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,40));}assert.fail('Runner timeout');}
+test('runner rejects an administrator identity before selecting or executing a task',{skip:!windows},async t=>{
+ const dir=await fixture(t);
+ const before=spawnSync('git.exe',['-C',dir,'status','--porcelain'],{encoding:'utf8'}).stdout;
+ const result=await run(dir,'-DryRun',{},true).result;
+ assert.notEqual(result.code,0,result.output);
+ assert.match(result.output,/Run the overnight loop from a non-elevated shell/);
+ const status=JSON.parse(await fs.readFile(path.join(dir,'.overnight/status.json'),'utf8'));
+ assert.equal(status.state,'error');
+ assert.match(await fs.readFile(path.join(dir,'.overnight/PAUSE'),'utf8'),/non-elevated shell/);
+ assert.equal(spawnSync('git.exe',['-C',dir,'status','--porcelain'],{encoding:'utf8'}).stdout,before);
+});
+test('runner elevation guard agrees with the real Windows host token',{skip:!windows},async t=>{
+ const dir=await fixture(t);
+ const query=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',
+  '[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)'],{windowsHide:true,encoding:'utf8'});
+ assert.equal(query.status,0,query.stderr);
+ const administrator=query.stdout.trim()==='True';
+ const result=await run(dir,'-DryRun',{},null).result;
+ if(administrator){assert.notEqual(result.code,0);assert.match(result.output,/non-elevated shell/);}
+ else{assert.equal(result.code,0,result.output);assert.match(result.output,/Next task: TEST/);}
+});
+
 test('runner dry run selects one pending task without edits, model calls or commits',{skip:!windows},async t=>{
  const dir=await fixture(t),before=spawnSync('git.exe',['-C',dir,'status','--porcelain'],{encoding:'utf8'}).stdout;
  const result=await run(dir,'-DryRun -MaxIterations 1 -MaxRuntimeMinutes 1').result;
@@ -34,7 +70,7 @@ test('runner dry run selects one pending task without edits, model calls or comm
 });
 test('runner exclusive lock rejects overlap and STOP terminates its dry-run wait',{skip:!windows},async t=>{
  const dir=await fixture(t),first=run(dir,'-DryRun -DryRunHoldSeconds 10');
- await until(async()=>{try{return JSON.parse(await fs.readFile(path.join(dir,'.overnight/status.json'))).state==='dry-run';}catch{return false;}});
+ await until(async()=>{if(first.child.exitCode!==null)assert.fail('Runner exited before acquiring its lock: '+(await first.result).output);try{return JSON.parse(await fs.readFile(path.join(dir,'.overnight/status.json'))).state==='dry-run';}catch{return false;}});
  const second=await run(dir,'-DryRun').result;assert.notEqual(second.code,0);assert.match(second.output,/exclusive lock/);
  await fs.writeFile(path.join(dir,'.overnight/STOP'),'test stop');
  assert.match((await first.result).output,/STOP flag observed/);
