@@ -28,7 +28,7 @@ function inspect(relative){
  assert.ok(versions.some(v=>v.FileVersion===version||v.FileVersion===version+'.0'),relative+' file version');
  return {file,size:bytes.length,sha256:hash(bytes),iconSizes:[...originals.keys()],versions};
 }
-assert.equal(version,'1.9.0');
+assert.equal(version,'1.9.1');
 const lock=require('../package-lock.json');assert.equal(lock.version,version);assert.equal(lock.packages[''].version,version);
 const exe=inspect('dist/win-unpacked/EverTale Audiobook Player.exe');
 const installer=inspect(`dist/EverTale-Audiobook-Player-Setup-${version}.exe`);
