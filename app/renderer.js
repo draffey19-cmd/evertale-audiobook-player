@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);
 let desiredSpeed=1;
-let books=[],folders=[],selected=null,active=null,trackIndex=0,sleepTimer=null,sleepEnd=0,mode='all',lastBook=null,profile='Default',settings={},sleepChapter=false,mini=false;
+let books=[],folders=[],selected=null,detailVisible=false,active=null,trackIndex=0,sleepTimer=null,sleepEnd=0,mode='all',lastBook=null,profile='Default',settings={},sleepChapter=false,mini=false;
 const audio=$('audio');
 let transcriptReader=null;
 
@@ -9,20 +9,20 @@ let transcriptReader=null;
 function askFields(title, fields){
   return new Promise(resolve=>{
     const backdrop=document.createElement('div');
-    backdrop.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:100000;padding:20px';
+    backdrop.className='field-dialog-backdrop';
     const form=document.createElement('form');
-    form.style.cssText='background:#202934;color:#fff;padding:24px;border:1px solid #526070;border-radius:16px;width:min(440px,100%);box-shadow:0 18px 70px #0009;display:grid;gap:14px';
-    const heading=document.createElement('h2');heading.textContent=title;heading.style.margin='0 0 6px';form.append(heading);
+    form.className='field-dialog';
+    const heading=document.createElement('h2');heading.textContent=title;form.append(heading);
     const inputs=[];
     for(const field of fields){
-      const label=document.createElement('label');label.textContent=field.label;label.style.cssText='display:grid;gap:6px;font-size:14px';
+      const label=document.createElement('label');label.textContent=field.label;
       const input=document.createElement('input');input.type='text';input.value=field.value||'';input.maxLength=field.maxLength||300;
-      input.style.cssText='width:100%;box-sizing:border-box;padding:10px;background:#111923;color:white;border:1px solid #6b7888;border-radius:8px;font-size:15px';
+
       label.append(input);form.append(label);inputs.push(input);
     }
-    const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:10px;margin-top:8px';
-    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';
-    const save=document.createElement('button');save.type='submit';save.textContent='Save';save.style.cssText='background:#d6a65c;color:#17191b;padding:9px 18px;border-radius:8px;font-weight:bold';
+    const actions=document.createElement('div');actions.className='field-dialog-actions';
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='ghost';cancel.textContent='Cancel';
+    const save=document.createElement('button');save.type='submit';save.textContent='Save';save.className='primary';
     actions.append(cancel,save);form.append(actions);backdrop.append(form);document.body.append(backdrop);
     const finish=value=>{backdrop.remove();resolve(value)};
     cancel.onclick=()=>finish(null);
@@ -36,22 +36,23 @@ function askFields(title, fields){
 const duration=s=>{s=Math.floor(Number(s)||0);return `${Math.floor(s/3600)?Math.floor(s/3600)+':':''}${String(Math.floor(s%3600/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`};
 function cover(el,uri){el.replaceChildren();if(uri){const img=document.createElement('img');img.src=uri;img.alt='Book cover';el.append(img);}else el.textContent='♫';}
 function button(label,fn,cls=''){const b=document.createElement('button');b.textContent=label;b.className=cls;b.addEventListener('click',fn);return b;}
-async function refresh(result){const data=await window.hearth.library();books=data.books;folders=data.folders||folders;lastBook=data.lastBook||lastBook;profile=data.profile||profile;settings=data.settings||settings;if(data.profiles){$('profile').replaceChildren();for(const name of data.profiles){const o=document.createElement('option');o.value=name;o.textContent=name;$('profile').append(o);}$('profile').value=profile;}render();if(active){const updated=books.find(x=>x.id===active.id);if(updated)active={...updated,progress:active.progress};}if(selected){selected=books.find(x=>x.id===selected.id);if(selected)showDetail(selected);else $('detail').hidden=true;}}
+async function refresh(result){const data=await window.hearth.library();books=data.books;folders=data.folders||folders;lastBook=data.lastBook||lastBook;profile=data.profile||profile;settings=data.settings||settings;if(data.profiles){$('profile').replaceChildren();for(const name of data.profiles){const o=document.createElement('option');o.value=name;o.textContent=name;$('profile').append(o);}$('profile').value=profile;}render();if(active){const updated=books.find(x=>x.id===active.id);if(updated)active={...updated,progress:active.progress};}if(selected){selected=books.find(x=>x.id===selected.id);if(selected){if(detailVisible)showDetail(selected);}else closeDetail();}}
 function render(){
+  $('settings-panel').hidden=mode!=='settings';document.querySelector('.toolbar').hidden=mode==='settings';document.querySelector('header .actions').hidden=mode==='settings';
   const query=$('search').value.trim().toLowerCase();let list=books.filter(b=>(b.title+' '+b.author).toLowerCase().includes(query));
   if(mode==='favorites')list=list.filter(b=>b.favorite);if(mode==='finished')list=list.filter(b=>b.finished);if(mode==='continue')list=list.filter(b=>b.progress.time>0||b.isLast);
   const sort=$('sort').value;if(sort==='author')list.sort((a,b)=>a.author.localeCompare(b.author));else if(sort==='recent')list.sort((a,b)=>(b.lastPlayed||0)-(a.lastPlayed||0));else list.sort((a,b)=>a.title.localeCompare(b.title));
-  $('heading').textContent=mode==='continue'?'Continue Listening':mode==='folders'?'Library Folders':mode==='favorites'?'Favorites':mode==='finished'?'Finished Books':mode==='stats'?'Listening Statistics':'My Audiobooks';
+  $('heading').textContent=mode==='continue'?'Continue Listening':mode==='folders'?'Library Folders':mode==='favorites'?'Favorites':mode==='finished'?'Finished Books':mode==='stats'?'Listening Statistics':mode==='settings'?'Settings':'My Audiobooks';
   $('subhead').textContent=`${books.length} audiobook${books.length===1?'':'s'} in your collection`;
   $('stats-panel').hidden=mode!=='stats';if(mode==='stats'){$('stats-panel').textContent=`${books.length} books · ${books.filter(b=>b.finished).length} finished · ${books.filter(b=>b.favorite).length} favorites · ${duration(books.reduce((n,b)=>n+b.duration,0))} total library duration`;}$('folders-panel').hidden=mode!=='folders';$('folders-panel').replaceChildren();
   if(mode==='folders')for(const folder of folders){const row=document.createElement('div');row.className='folder-row';const label=document.createElement('span');label.textContent=folder;row.append(label,button('Remove',async()=>{if(confirm(`Remove this folder from your library?\n${folder}\n\nOriginal files will not be deleted.`)){await refresh(await window.hearth.removeFolder(folder));}},'ghost'));$('folders-panel').append(row);}
-  $('library').replaceChildren();$('empty').hidden=!!list.length||mode==='folders'||mode==='stats';if(mode==='stats')list=[];
+  $('library').replaceChildren();$('empty').hidden=!!list.length||mode==='folders'||mode==='stats'||mode==='settings';if(mode==='stats'||mode==='settings')list=[];
   for(const b of list){const item=document.createElement('article');item.className='book';item.tabIndex=0;const art=document.createElement('div');art.className='cover';cover(art,b.cover);const title=document.createElement('h3');title.textContent=b.title;const author=document.createElement('p');author.textContent=b.author;item.append(art,title,author);if(b.favorite){const star=document.createElement('span');star.textContent='★ Favorite';star.className='book-label';item.append(star);}if(b.finished){const done=document.createElement('span');done.textContent='✓ Finished';done.className='book-label';item.append(done);}const p=document.createElement('div');p.className='progress';const bar=document.createElement('i');let elapsed=b.tracks.slice(0,b.progress.track).reduce((sum,t)=>sum+t.duration,0)+b.progress.time;bar.style.width=`${b.duration?Math.min(100,100*elapsed/b.duration):0}%`;p.append(bar);item.append(p);item.addEventListener('click',()=>showDetail(b));item.addEventListener('keydown',e=>{if(e.key==='Enter')showDetail(b)});$('library').append(item);}
 }
-function showDetail(b){const priorQuery=selected?.id===b.id?$('chapter-search').value:'';selected=b;$('detail').hidden=false;cover($('detail-cover'),b.cover);$('detail-title').textContent=b.title;$('detail-author').textContent=b.author;$('detail-duration').textContent=`${duration(b.duration)} · ${b.tracks.length} file${b.tracks.length===1?'':'s'}`;$('chapters').replaceChildren();$('favorite').textContent=b.favorite?'★ Unfavorite':'☆ Favorite';$('finished-btn').textContent=b.finished?'↶ Mark unfinished':'✓ Mark finished';$('bookmarks').replaceChildren();for(const [markIndex,mark] of (b.bookmarks||[]).entries()){const row=document.createElement('div');row.className='bookmark-row';const jump=button(`${b.tracks[mark.track]?.name||'Chapter'} · ${duration(mark.time)} · ${mark.note||'Bookmark'}`,()=>playBook(b,mark.track,mark.time),'chapter');jump.title='Play from this bookmark';const remove=button('Remove',async()=>{if(!confirm('Remove this bookmark?'))return;try{const remaining=(selected?.bookmarks||[]).filter((_,i)=>i!==markIndex);await window.hearth.property('bookmarks',b.id,remaining);await refresh();}catch(e){alert('Could not remove bookmark: '+e.message);}},'ghost');remove.title='Remove bookmark';row.append(jump,remove);$('bookmarks').append(row);}
-  const chapters=b.chapters.length?b.chapters:b.tracks.map((t,i)=>({track:i,time:0,title:t.name}));
-  if(!chapters.length){const p=document.createElement('p');p.textContent='No embedded chapters detected.';$('chapters').append(p);}
-  for(const c of chapters){const el=button(c.title,()=>playBook(b,c.track,c.time),'chapter');el.dataset.title=c.title.toLowerCase();$('chapters').append(el);} $('chapter-search').value=priorQuery; $('chapter-search').dispatchEvent(new Event('input'));transcriptReader?.refresh();
+// Keep the selected book available without reopening details after navigation or refresh.
+function closeDetail(){detailVisible=false;$('detail').hidden=true;}
+function showDetail(b){selected=b;detailVisible=true;$('detail').hidden=false;cover($('detail-cover'),b.cover);$('detail-title').textContent=b.title;$('detail-author').textContent=b.author;$('detail-duration').textContent=`${duration(b.duration)} · ${b.tracks.length} file${b.tracks.length===1?'':'s'}`;$('favorite').textContent=b.favorite?'★ Unfavorite':'☆ Favorite';$('finished-btn').textContent=b.finished?'↶ Mark unfinished':'✓ Mark finished';$('bookmarks').replaceChildren();for(const [markIndex,mark] of (b.bookmarks||[]).entries()){const row=document.createElement('div');row.className='bookmark-row';const jump=button(`${b.tracks[mark.track]?.name||'Chapter'} · ${duration(mark.time)} · ${mark.note||'Bookmark'}`,()=>playBook(b,mark.track,mark.time),'chapter');jump.title='Play from this bookmark';const remove=button('Remove',async()=>{if(!confirm('Remove this bookmark?'))return;try{const remaining=(selected?.bookmarks||[]).filter((_,i)=>i!==markIndex);await window.hearth.property('bookmarks',b.id,remaining);await refresh();}catch(e){alert('Could not remove bookmark: '+e.message);}},'ghost');remove.title='Remove bookmark';row.append(jump,remove);$('bookmarks').append(row);}
+  if(!$('chapter-drawer').open)renderChapters(b);transcriptReader?.refresh();
 }
 async function playBook(b,index=null,time=null){if(!b?.tracks.length)return;active=b;trackIndex=index??Math.min(b.progress.track||0,b.tracks.length-1);let start=time??b.progress.time??0;start=Math.max(0,start);$('player').hidden=false;cover($('mini-cover'),b.cover);$('now-title').textContent=b.title;$('now-author').textContent=b.author;loadTrack(start,true);}
 function loadTrack(start=0,autoplay=false){if(!active)return;transcriptReader?.refresh();const track=active.tracks[trackIndex];if(!track)return;audio.src=`hearth-media://${track.key}/audio`;audio.load();audio.playbackRate=desiredSpeed;audio.addEventListener('loadedmetadata',function setStart(){audio.removeEventListener('loadedmetadata',setStart);if(Number.isFinite(audio.duration))audio.currentTime=Math.min(start,Math.max(0,audio.duration-0.1));if(autoplay)audio.play().catch(()=>{});},{once:false});updatePlay();}
@@ -72,8 +73,8 @@ function seekChapter(direction){
 let lastSaved=0;function persist(){if(!active)return;active.progress={track:trackIndex,time:audio.currentTime||0};lastBook=active.id;window.hearth.progress(active.id,active.progress).catch(console.error);}
 function tick(){const len=Number.isFinite(audio.duration)?audio.duration:active?.tracks[trackIndex]?.duration||0;$('current').textContent=duration(audio.currentTime);$('total').textContent=duration(len);$('seek').value=len?Math.min(100,audio.currentTime/len*100):0;if(Date.now()-lastSaved>5000){persist();lastSaved=Date.now();}if(sleepEnd&&Date.now()>=sleepEnd){audio.pause();sleepEnd=0;$('sleep').value='0';}}
 $('add').onclick=$('empty-add').onclick=async()=>{const result=await window.hearth.addFolder();if(result)await refresh(result);};$('scan').onclick=async()=>{ $('scan').textContent='Scanning…';try{await refresh(await window.hearth.rescan());}finally{$('scan').innerHTML=svgIcon('refresh')+'<span>Rescan</span>';}};
-$('all').onclick=()=>changeMode('all');$('continue').onclick=()=>changeMode('continue');$('folders').onclick=()=>changeMode('folders');function changeMode(m){mode=m;for(const id of ['all','continue','favorites','finished','stats','folders'])$(id).classList.toggle('active',id===m);render();}
-$('favorites').onclick=()=>changeMode('favorites');$('finished').onclick=()=>changeMode('finished');$('stats').onclick=()=>changeMode('stats');$('search').oninput=render;$('sort').onchange=render;$('close-detail').onclick=()=>{$('detail').hidden=true};$('detail-play').onclick=()=>playBook(selected);
+$('all').onclick=()=>changeMode('all');$('continue').onclick=()=>changeMode('continue');$('folders').onclick=()=>changeMode('folders');function changeMode(m){closeDetail();mode=m;for(const id of ['all','continue','favorites','finished','stats','folders','settings'])$(id).classList.toggle('active',id===m);render();}
+$('favorites').onclick=()=>changeMode('favorites');$('finished').onclick=()=>changeMode('finished');$('stats').onclick=()=>changeMode('stats');$('search').oninput=render;$('sort').onchange=render;$('close-detail').onclick=closeDetail;$('detail-play').onclick=()=>playBook(selected);
 $('edit').onclick=async()=>{if(!selected)return;const id=selected.id;const values=await askFields('Edit audiobook details',[{label:'Title',value:selected.title},{label:'Author',value:selected.author}]);if(!values)return;try{await window.hearth.edit(id,{title:values[0].trim()||selected.title,author:values[1].trim()||selected.author});await refresh();}catch(e){alert('Could not save book details: '+e.message);}};
 $('cover').onclick=async()=>{if(!selected)return;const result=await window.hearth.cover(selected.id);if(result)await refresh(result);};
 $('toggle').onclick=()=>audio.paused?audio.play().catch(console.error):audio.pause();$('back').onclick=()=>audio.currentTime=Math.max(0,audio.currentTime-15);$('forward').onclick=()=>audio.currentTime=Math.min(audio.duration||Infinity,audio.currentTime+30);$('prev').onclick=()=>seekChapter(-1);$('next').onclick=()=>seekChapter(1);
@@ -95,7 +96,37 @@ window.addEventListener('beforeunload',persist);document.addEventListener('visib
 });
 window.hearth.onChanged(()=>refresh());refresh();
 
-$('chapter-search').oninput=e=>{for(const el of $('chapters').children)el.hidden=!el.dataset.title?.includes(e.target.value.toLowerCase());};
+let chapterBook=null,chapterOpener=null;
+// Whole-file chapters use scanned audio metadata; embedded chapters retain start offsets.
+function chapterTimeLabel(chapter, chapters, tracks){
+ const wholeFile=chapter.time===0&&chapters.filter(c=>c.track===chapter.track).length===1;
+ if(wholeFile){
+  const seconds=tracks[chapter.track]?.duration;
+  return {text:Number.isFinite(seconds)&&seconds>=1?duration(seconds):'Duration unavailable',kind:'Duration'};
+ }
+ return {text:Number.isFinite(chapter.time)&&chapter.time>=0?duration(chapter.time):'Start unavailable',kind:'Starts at'};
+}
+function renderChapters(b){
+ chapterBook=b;$('chapter-book').textContent=b.title;$('chapters').replaceChildren();
+ const chapters=(b.chapters.length?b.chapters:b.tracks.map((t,i)=>({track:i,time:0,title:t.name}))).slice().sort((a,b)=>a.track-b.track||a.time-b.time);
+ for(const c of chapters){
+  const el=button('',()=>{playBook(b,c.track,c.time);},'chapter');
+  const title=document.createElement('span');title.className='chapter-title';title.textContent=c.title;
+  const time=document.createElement('span');time.className='chapter-time';const label=chapterTimeLabel(c,chapters,b.tracks);time.textContent=label.kind==='Starts at'&&label.text!=='Start unavailable'?'Starts at '+label.text:label.text;time.title=label.kind;
+  el.append(title,time);el.dataset.title=c.title.toLowerCase();el.dataset.track=c.track;el.dataset.time=c.time;$('chapters').append(el);
+ }
+ filterChapters();highlightChapter();
+}
+function filterChapters(){let count=0;for(const el of $('chapters').children){el.hidden=!el.dataset.title.includes($('chapter-search').value.trim().toLowerCase());if(!el.hidden)count++;}$('chapter-empty').hidden=count>0;}
+function highlightChapter(){let current=null;for(const el of $('chapters').children){if(active?.id===chapterBook?.id&&(Number(el.dataset.track)<trackIndex||Number(el.dataset.track)===trackIndex&&Number(el.dataset.time)<=audio.currentTime))current=el;}
+ for(const el of $('chapters').children){el.classList.toggle('current',el===current);if(el===current)el.setAttribute('aria-current','true');else el.removeAttribute('aria-current');}}
+function openChapters(b,opener){if(!b)return;chapterOpener=opener;$('chapter-search').value='';renderChapters(b);$('chapter-drawer').showModal();$('player-chapters').setAttribute('aria-expanded','true');$('chapter-search').focus();}
+$('chapter-search').oninput=filterChapters;
+$('player-chapters').onclick=()=>openChapters(active,$('player-chapters'));
+$('detail-chapters').onclick=()=>openChapters(selected,$('detail-chapters'));
+$('close-chapters').onclick=()=>$('chapter-drawer').close();
+$('chapter-drawer').addEventListener('close',()=>{$('player-chapters').setAttribute('aria-expanded','false');chapterOpener?.focus();});
+for(const event of ['timeupdate','loadedmetadata','seeked'])audio.addEventListener(event,highlightChapter);
 $('favorite').onclick=async()=>{if(!selected)return;await window.hearth.property('favorites',selected.id,!selected.favorite);await refresh();};
 $('finished-btn').onclick=async()=>{if(!selected)return;await window.hearth.property('finished',selected.id,!selected.finished);await refresh();};
 $('bookmark').onclick=async()=>{if(!selected)return;const isCurrent=active?.id===selected.id;const track=isCurrent?trackIndex:selected.progress.track;const time=isCurrent?audio.currentTime:selected.progress.time;const values=await askFields('Add bookmark',[{label:'Note (optional)',value:''}]);if(!values)return;const marks=[...(selected.bookmarks||[]),{track:Math.max(0,Number(track)||0),time:Math.max(0,Number(time)||0),note:values[0]}];try{await window.hearth.property('bookmarks',selected.id,marks);await refresh();}catch(e){alert('Could not save bookmark: '+e.message);}};
@@ -103,15 +134,15 @@ $('profile').onchange=async e=>{audio.pause();active=null;$('player').hidden=tru
 $('new-profile').onclick=async()=>{const values=await askFields('New listener',[{label:'Listener name',value:'',maxLength:50}]);const name=values?.[0];if(name?.trim()){audio.pause();active=null;$('player').hidden=true;await refresh(await window.hearth.profile(name));}};
 $('backup').onclick=()=>window.hearth.backup().catch(e=>alert(e.message));
 $('restore').onclick=async()=>{if(!confirm('Restore saved library settings from backup?'))return;try{if(await window.hearth.restore())await refresh();}catch(e){alert(e.message);}};
-$('mini').onclick=()=>{mini=!mini;document.body.classList.toggle('mini-mode',mini);};
+$('mini').onclick=async()=>{try{const next=!mini;await window.hearth.compactPlayer(next);mini=next;document.body.classList.toggle('mini-mode',mini);$('mini').setAttribute('aria-label',mini?'Return to library':'Floating player');$('mini').title=mini?'Return to library':'Floating player';}catch(e){alert('Could not change player size: '+e.message);}};
 const ctx=new (window.AudioContext||window.webkitAudioContext)();const source=ctx.createMediaElementSource(audio);const eq=ctx.createBiquadFilter();eq.type='peaking';eq.frequency.value=1800;eq.Q.value=.8;eq.gain.value=0;source.connect(eq);eq.connect(ctx.destination);
 $('voice').onclick=()=>{eq.gain.value=eq.gain.value?0:5;$('voice').classList.toggle('active',!!eq.gain.value);ctx.resume().catch(()=>{});};
 audio.addEventListener('play',()=>ctx.resume().catch(()=>{}));
-document.addEventListener('keydown',e=>{if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||e.ctrlKey||e.altKey)return;if(e.code==='Space'){e.preventDefault();if(active)$('toggle').click();}else if(e.code==='ArrowLeft'&&active)audio.currentTime=Math.max(0,audio.currentTime-15);else if(e.code==='ArrowRight'&&active)audio.currentTime+=30;});
+document.addEventListener('keydown',e=>{if($('chapter-drawer').open||['INPUT','SELECT','TEXTAREA','BUTTON','SUMMARY'].includes(document.activeElement?.tagName)||e.ctrlKey||e.altKey)return;if(e.code==='Space'){e.preventDefault();if(active)$('toggle').click();}else if(e.code==='ArrowLeft'&&active)audio.currentTime=Math.max(0,audio.currentTime-15);else if(e.code==='ArrowRight'&&active)audio.currentTime+=30;});
 
 // Custom vector icons: independent of operating-system fonts and emoji rendering.
 const glyphs={play:'<path d="m8 5 12 7-12 7z"/>',pause:'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',previous:'<path d="M6 5v14M19 6l-10 6 10 6z"/>',next:'<path d="M18 5v14M5 6l10 6-10 6z"/>',back:'<path d="M4 11a8 8 0 1 1 2 6M4 5v6h6"/><text x="12" y="15" font-size="7" text-anchor="middle" fill="currentColor" stroke="none">15</text>',forward:'<path d="M20 11a8 8 0 1 0-2 6M20 5v6h-6"/><text x="12" y="15" font-size="7" text-anchor="middle" fill="currentColor" stroke="none">30</text>',library:'<rect x="4" y="3" width="5" height="18" rx="1"/><rect x="11" y="3" width="5" height="18" rx="1"/><path d="m18 5 3 15"/>',heart:'<path d="M20.8 8.6c0 4.2-8.8 10.4-8.8 10.4S3.2 12.8 3.2 8.6a4.6 4.6 0 0 1 8.8-1.8 4.6 4.6 0 0 1 8.8 1.8z"/>',check:'<path d="m4 12 5 5L20 6"/>',folder:'<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',chart:'<path d="M4 20V11m6 9V5m6 15v-7m4 7V8"/>',refresh:'<path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/>',plus:'<path d="M12 5v14M5 12h14"/>',close:'<path d="M5 5 19 19M19 5 5 19"/>',edit:'<path d="m4 20 4-.8L20 7l-3-3L5 16z"/>',image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="2"/><path d="m3 17 6-6 4 4 3-3 5 5"/>',bookmark:'<path d="M6 3h12v18l-6-4-6 4z"/>',mini:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M13 13h6v5h-6z"/>',volume:'<path d="M4 9h4l5-4v14l-5-4H4zM17 9a5 5 0 0 1 0 6"/>',headphones:'<path d="M4 13v-2a8 8 0 0 1 16 0v2M4 13h4v7H6a2 2 0 0 1-2-2zm12 0h4v5a2 2 0 0 1-2 2h-2z"/>'};
-function svgIcon(name){return `<svg class="hearth-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${glyphs[name]}</svg>`;}
+function svgIcon(name){return `<svg class="evertale-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${glyphs[name]}</svg>`;}
 const iconButtons={all:['library','Library'],continue:['play','Continue listening'],favorites:['heart','Favorites'],finished:['check','Finished'],stats:['chart','Statistics'],folders:['folder','Library folders'],scan:['refresh','Rescan'],add:['plus','Add folder'], 'empty-add':['folder','Choose audiobook folder'],'close-detail':['close','Close'], 'detail-play':['play','Listen'],edit:['edit','Edit details'],cover:['image','Change cover'],bookmark:['bookmark','Bookmark current position'],prev:['previous','Previous chapter'],back:['back','Back 15 seconds'],forward:['forward','Forward 30 seconds'],next:['next','Next chapter'],mini:['mini','Mini player']};
 function applyIcons(){for(const [id,[name,label]] of Object.entries(iconButtons)){const el=$(id);if(!el)continue;el.innerHTML=svgIcon(name)+((label==='Close'||['prev','back','forward','next','mini'].includes(id))?'':`<span>${label}</span>`);el.setAttribute('aria-label',label);}}
 applyIcons();
@@ -220,3 +251,34 @@ $('vibe-compute').onchange=async()=>{try{const value=$('vibe-compute').value;con
 $('vibe-devices').onclick=async()=>{try{const devices=await window.hearth.aiVibeDevices();$('vibe-compute').replaceChildren();for(const [value,label] of [['auto','Automatic backend'],['cpu','CPU only'],...devices.map(d=>[String(d.index),d.description+' (Vulkan '+d.index+')'])]){const o=document.createElement('option');o.value=value;o.textContent=label;$('vibe-compute').append(o);}showVibePreferences(await window.hearth.aiVibeConfig());}catch(e){$('ai-engine-status').textContent=e.message;}};
 $('vibe-keep-fallback').onclick=async()=>{try{const c=await window.hearth.aiVibeConfig();if(!c.model)throw Error('Select your working tiny model first');showVibePreferences(await window.hearth.aiVibeConfig({fallbackModel:c.model}));}catch(e){$('ai-engine-status').textContent=e.message;}};
 $('vibe-use-fallback').onclick=async()=>{try{const c=await window.hearth.aiVibeConfig();if(!c.fallbackModel)throw Error('No fallback model saved');const next=await window.hearth.aiVibeConfig({model:c.fallbackModel});$('vibe-model').value=next.model;showVibePreferences(next);$('ai-engine-status').textContent='Fallback selected. Start / test to load it.';}catch(e){$('ai-engine-status').textContent=e.message;}};
+
+// Keep the existing Vibe engine and its persisted settings for live transcription.
+let liveStarting=false;
+$('ai-live').onclick=async()=>{
+ if(liveStarting)return;
+ const b=selected||active;if(!b)return;
+ if(bookQueueState.state==='running'){$('ai-live-status').textContent='Pause the whole-book queue before starting a live transcript.';return;}
+ liveStarting=true;$('ai-live').disabled=true;$('ai-live-status').textContent='Starting your local server and loading the saved speech model?';
+ try{
+  await window.hearth.aiVibeReady();
+  if(active?.id!==b.id)await playBook(b);
+  $('ai-auto').checked=true;aiSyncVersion++;
+  renderAi(await window.hearth.aiAutoStart(b.id,trackIndex,audio.currentTime,aiOptions()));
+  $('ai-live-status').textContent='Live transcript started. Text appears in Follow along as each section is saved. You can keep listening or cancel below.';
+ }catch(e){$('ai-auto').checked=false;$('ai-advanced').open=true;$('ai-live-status').textContent='Could not start live transcript. In Advanced, choose vibe-server.exe and a downloaded speech model, then use Start / test Vibe. Details: '+e.message;}
+ finally{liveStarting=false;$('ai-live').disabled=false;}
+};
+window.hearth.onAiStatus(s=>{if(s.state==='error'){$('ai-live-status').textContent='Transcription stopped: '+s.message+' Open Advanced to check setup.';$('ai-advanced').open=true;}else if(s.message)$('ai-live-status').textContent=s.message;});
+
+// Appearance preference belongs to this installation, independently of listener profiles.
+$('settings').onclick=()=>changeMode('settings');
+for(const theme of EverTaleThemes.themes){
+ const label=document.createElement('label');label.className='theme-option';label.dataset.theme=theme.id;
+ const input=document.createElement('input');input.type='radio';input.name='appearance-theme';input.value=theme.id;input.checked=theme.id===EverTaleThemes.controller.current;
+ const text=document.createElement('span');const title=document.createElement('strong');title.textContent=theme.name;
+ const description=document.createElement('small');description.textContent=theme.description;text.append(title,description);
+ const swatch=document.createElement('span');swatch.className='theme-swatch';swatch.setAttribute('aria-hidden','true');
+ label.append(input,text,swatch);$('theme-options').append(label);
+ input.onchange=()=>{if(!input.checked)return;try{EverTaleThemes.controller.select(theme.id);$('appearance-status').textContent=theme.name+' saved.';}catch(e){for(const radio of document.querySelectorAll('[name=appearance-theme]'))radio.checked=radio.value===EverTaleThemes.controller.current;$('appearance-status').textContent='Could not save theme: '+e.message;}};
+}
+for(const image of document.querySelectorAll('[data-brand-logo]'))image.src=`assets/logo-${EverTaleThemes.controller.current}.png`;

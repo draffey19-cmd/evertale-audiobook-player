@@ -148,3 +148,20 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# EverTale local libraries, transcription state, backups, and signing material
+library.json
+library.json.tmp
+library-cache.json
+library-cache.json.tmp
+vibe-config.json
+ai-book-queue.json
+ai-book-queue.json.tmp
+ai-transcripts/
+userData/
+hearth-backup.json
+evertale-backup.json
+*.pfx
+*.p12
+*.pem
+*.key

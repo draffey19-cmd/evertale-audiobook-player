@@ -1,6 +1,6 @@
 {
   "name": "evertale-audiobook-player",
-  "version": "1.8.0-beta.1",
+  "version": "1.9.0",
   "description": "EverTale Audiobook Player for Windows",
   "main": "main.cjs",
   "scripts": {
@@ -9,7 +9,7 @@
     "build:win": "electron-builder --win nsis",
     "dev": "electron . --hearth-dev",
     "build:dir": "electron-builder --win dir",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer.js && node --check updater.cjs && node --check ai-transcription.cjs && node --check transcript-reader.js && node --check book-transcription.cjs"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check renderer.js && node --check updater.cjs && node --check ai-transcription.cjs && node --check transcript-reader.js && node --check book-transcription.cjs && node --check themes.js"
   },
   "dependencies": {
     "music-metadata": "^10.9.0",
@@ -39,15 +39,22 @@
       "styles.css",
       "package.json",
       "apply_patch.py",
-      "Apply Update.cmd"
+      "Apply Update.cmd",
+      "themes.js",
+      "themes.css",
+      "assets/**"
     ],
     "win": {
       "target": "nsis",
-      "artifactName": "EverTale-Audiobook-Player-Setup-${version}.${ext}"
+      "artifactName": "EverTale-Audiobook-Player-Setup-${version}.${ext}",
+      "icon": "assets/evertale.ico",
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/evertale.ico",
+      "uninstallerIcon": "assets/evertale.ico"
     },
     "publish": [
       {

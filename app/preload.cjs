@@ -2,6 +2,7 @@ const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('hearth',{
   library:()=>ipcRenderer.invoke('get-library'),
   aiEngineStatus:()=>ipcRenderer.invoke('ai-engine-status'),
+  compactPlayer:enabled=>ipcRenderer.invoke('compact-player',enabled),
   aiVibeConfig:changes=>ipcRenderer.invoke('ai-vibe-config',changes),
   aiVibeBrowse:kind=>ipcRenderer.invoke('ai-vibe-browse',kind),
   aiVibeReady:()=>ipcRenderer.invoke('ai-vibe-ready'),

@@ -3,7 +3,8 @@ const { initializeUpdater } = require('./updater.cjs');
 const { createTranscription } = require('./ai-transcription.cjs');
 const devMode = process.argv.includes('--hearth-dev');
 // Keep the existing Hearth data folder when rebranding, preserving library and progress.
-app.setName('Hearth Audiobooks');
+app.setPath('userData', require('node:path').join(app.getPath('appData'),'Hearth Audiobooks'));
+app.setName('EverTale Audiobook Player');
 if (devMode) { try { require('electron-reloader')(module, { watchRenderer: true, ignore: ['library.json', 'library-cache.json', 'dist', 'node_modules'] }); } catch(e) { console.warn('Live reload unavailable:',e.message); } }
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -14,6 +15,13 @@ const { pathToFileURL } = require('node:url');
 
 protocol.registerSchemesAsPrivileged([{scheme:'hearth-media',privileges:{standard:true,secure:true,stream:true,supportFetchAPI:true}}]);
 let win;
+let fullPlayerBounds=null,fullPlayerMaximized=false;
+ipcMain.handle('compact-player',(event,enabled)=>{
+ if(!win||event.sender!==win.webContents)throw Error('Player window unavailable');
+ if(enabled&&!fullPlayerBounds){fullPlayerBounds=win.getBounds();fullPlayerMaximized=win.isMaximized();if(fullPlayerMaximized)win.unmaximize();win.setMinimumSize(420,300);win.setSize(560,330);}
+ else if(!enabled&&fullPlayerBounds){win.setMinimumSize(780,550);win.setBounds(fullPlayerBounds);fullPlayerBounds=null;if(fullPlayerMaximized)win.maximize();}
+ return !!enabled;
+});
 let store = {folders:[], overrides:{}, progress:{}, lastBook:null, favorites:{},finished:{},bookmarks:{},profiles:["Default"],profile:"Default",settings:{},history:{}};
 let books = [];
 let tracks = new Map();
@@ -115,7 +123,7 @@ async function performScan(){
 }
 function scan(){if(scanRunning)return scanRunning;scanRunning=performScan().finally(()=>{scanRunning=null;});return scanRunning;}
 function createWindow(){
-  win=new BrowserWindow({width:1260,height:820,minWidth:780,minHeight:550,backgroundColor:'#10151c',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:false}});
+  win=new BrowserWindow({width:1260,height:820,minWidth:780,minHeight:550,title:'EverTale Audiobook Player',icon:path.join(__dirname,'assets/evertale.ico'),backgroundColor:'#100c24',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:false}});
   win.loadFile('index.html');
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
 }
@@ -166,7 +174,7 @@ ipcMain.handle('profile',async(_,name)=>{
  store.profile=name;await save();return decorateBooks();
 });
 ipcMain.handle('settings',async(_,values)=>{for(const [k,v] of Object.entries(values||{}))if(['rewind','theme','voiceBoost','autoScan'].includes(k))store.settings[k]=v;await save();return store.settings;});
-ipcMain.handle('backup',async()=>{const r=await dialog.showSaveDialog(win,{defaultPath:'hearth-backup.json',filters:[{name:'JSON',extensions:['json']}]});if(r.canceled)return false;await fsp.writeFile(r.filePath,JSON.stringify(store,null,2));return true;});
+ipcMain.handle('backup',async()=>{const r=await dialog.showSaveDialog(win,{defaultPath:'evertale-backup.json',filters:[{name:'JSON',extensions:['json']}]});if(r.canceled)return false;await fsp.writeFile(r.filePath,JSON.stringify(store,null,2));return true;});
 ipcMain.handle('restore',async()=>{const r=await dialog.showOpenDialog(win,{properties:['openFile'],filters:[{name:'JSON',extensions:['json']}]});if(r.canceled)return false;const data=JSON.parse(await fsp.readFile(r.filePaths[0],'utf8'));if(!Array.isArray(data.folders)||typeof data.overrides!=='object')throw Error('Invalid backup');store={...store,...data};await save();cacheDirty=true;await scan();return true;});
 
 app.on('before-quit',()=>{save().catch(console.error);});
